@@ -138,6 +138,12 @@ I reviewed all four API routes (`join`, `poll`, `signal`, `leave`) plus the clie
 - Also recommended for production, no code needed: a Vercel Firewall rate-limit rule on `/api/*` as a first line of defense before the function even runs.
 - Verified: the 11th live session → 429, re-joins of existing sessions still work, 17 KB payload → 400, bursts over the signal/poll limits → 429, 101st pending signal → 429. The earlier auth, pairing and offset suites still pass.
 
+**#5: Input validation.** IDs and tokens are already format-checked by #1 and #2 (UUID / 64-hex). Signal payloads are now checked per type by a shared `normalizePayload` (`lib/payload.ts`):
+- `offer`/`answer` must be JSON `{ type, sdp }` with `type` matching the signal. `ice` must be a well-formed `RTCIceCandidateInit`. `request`/`accept`/`decline`/`end` must carry nothing.
+- The server relays a canonical copy containing only the known fields, so nothing extra gets smuggled to the peer.
+- The client runs the same check before passing anything to `RTCPeerConnection`. `handleSignal` errors are now caught and logged, instead of becoming unhandled promise rejections.
+- Verified: non-JSON, wrong-type and missing-field payloads → 400, extra fields stripped, and the full connection flow still passes (34/34).
+
 ## Phase 4 — Make it better
 
 _TODO_

@@ -1,3 +1,5 @@
+import { normalizePayload } from "@/lib/payload";
+
 export type DescType = "offer" | "answer" | "ice";
 export type PeerControl =
   | "video-request"
@@ -92,7 +94,10 @@ export class PeerSession {
 
   async handleSignal(type: DescType, payload: string) {
     if (this.closed) return;
-    const data = JSON.parse(payload);
+    // Never hand malformed data to RTCPeerConnection.
+    const clean = normalizePayload(type, payload);
+    if (!clean) return;
+    const data = JSON.parse(clean);
 
     if (type === "ice") {
       if (!this.pc.remoteDescription) {

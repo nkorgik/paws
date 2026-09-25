@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import type { SignalType } from "@/lib/types";
 import { bearerToken, findSession, isValidId } from "@/lib/auth";
 import { unpair } from "@/lib/pairing";
+import { normalizePayload } from "@/lib/payload";
 import { LIMITS, rateLimited, tooManyRequests } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
@@ -49,16 +50,16 @@ export async function POST(request: NextRequest) {
   if (typeof type !== "string" || !VALID_TYPES.includes(type as SignalType)) {
     return Response.json({ error: "invalid type" }, { status: 400 });
   }
-  if (
-    payload !== undefined &&
-    payload !== null &&
-    (typeof payload !== "string" || payload.length > LIMITS.payloadBytes)
-  ) {
+  const signalType = type as SignalType;
+  if (typeof payload === "string" && payload.length > LIMITS.payloadBytes) {
+    return Response.json({ error: "payload too large" }, { status: 400 });
+  }
+  // Only well-formed SDP / ICE for handshake types, nothing for the rest.
+  // Relays a canonical copy with just the known fields.
+  const payloadStr = normalizePayload(signalType, payload);
+  if (payloadStr === undefined) {
     return Response.json({ error: "invalid payload" }, { status: 400 });
   }
-
-  const signalType = type as SignalType;
-  const payloadStr = typeof payload === "string" ? payload : null;
 
   // Every signal must fit the current connection state (see lib/pairing.ts).
   // Anything else is rejected, so nobody can mark strangers busy, free them,

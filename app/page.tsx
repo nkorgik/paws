@@ -254,10 +254,9 @@ export default function Home() {
         const peerId =
           c.kind === "connecting" || c.kind === "connected" ? c.peerId : null;
         if (peerRef.current && peerId === sig.fromId) {
-          void peerRef.current.handleSignal(
-            sig.type as DescType,
-            sig.payload ?? "",
-          );
+          peerRef.current
+            .handleSignal(sig.type as DescType, sig.payload ?? "")
+            .catch((e) => console.warn("Failed to apply signal", e));
         }
         break;
       }
