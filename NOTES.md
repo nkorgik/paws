@@ -65,7 +65,42 @@ _TODO_
 
 ## Phase 3 — Make it secure
 
-_TODO_
+I reviewed all four API routes (`join`, `poll`, `signal`, `leave`) plus the client code that calls them. Findings, ranked by impact:
+
+| # | Severity | Issue |
+|---|---|---|
+| 1 | **Critical** | No authentication: the public session ID is the only credential |
+| 2 | **High** | No server-side connection state: signals aren't checked against a real request/connection |
+| 3 | **High** | Real location can be triangulated from repeated privacy offsets |
+| 4 | **High** | No rate limiting or resource caps |
+| 5 | Medium | Weak input validation (IDs, signal payloads) |
+| 6 | Medium | Missing security headers (clickjacking, permissions) |
+| 7 | Medium | The de facto credential (the ID) is sent in the URL query string |
+| 8 | Low | Hard-coded fallback Mapbox token, and the token isn't domain-restricted |
+| 9 | Low | Leftover dev config (`allowedDevOrigins` with an ngrok host) |
+| 10 | Low | No length limit on chat messages |
+| 11 | Low / inherent | A peer learns your public IP once you accept a connection |
+
+**1. No authentication (Critical).** Every user's session ID is returned to everyone by `/api/poll` (it's how dots are drawn), and every endpoint simply trusts the ID in the request. Knowing someone's ID is enough to *be* them:
+- `GET /api/poll?id=<victim>` reads **and deletes** the victim's mailbox. The attacker gets their connection requests and WebRTC handshake data (which includes the victim's IP addresses), and the victim never receives them.
+- `POST /api/signal` accepts any `fromId`, so an attacker can send requests, accepts and handshake messages as anyone. Because the keys that encrypt a WebRTC call are exchanged through this signaling, an attacker who can inject their own offer/answer can put themselves in the middle of a "private" chat or video call.
+- `POST /api/leave` with a victim's ID removes them from the map, and `POST /api/join` with their ID moves their dot.
+
+**2. No server-side connection state (High).** The server doesn't check that a signal belongs to an actual request or connection. `accept` sent to anyone, without a request, marks both users `busy`, so a script can mark every user busy and nobody can connect. `end`/`decline` can free anyone, and handshake messages can be sent to users you never connected with.
+
+**3. Location triangulation (High).** Each join picks a fresh random 1–3 km offset around the real location, so averaging many offsets for the same user converges on their real location. Combined with #1 this can be forced: kick the victim with `/api/leave`, the client automatically re-joins (Phase 1 bug 7 fix) with a new offset, repeat.
+
+**4. No rate limiting or caps (High).** A script can create thousands of fake dots, fill the database or one victim's mailbox with 64 KB signals, and hammer `/api/poll`, which runs ~6 queries per call including table-wide deletes.
+
+**5–7 (Medium).** IDs aren't format- or length-checked, and signal payloads aren't validated (the client `JSON.parse`s whatever arrives). No security headers, so the app can be framed on another site to trick users into granting camera/mic/location permissions or accepting connections. The ID sits in the poll URL, so it ends up in server and proxy logs.
+
+**8–11 (Low).** A dummy Mapbox token is hard-coded as a fallback in `WorldMap.tsx`, and the real token should be restricted to the deployed domain in the Mapbox dashboard. The `allowedDevOrigins` ngrok host is leftover dev config. Chat messages have no size limit, so a peer can send huge ones. Once you accept a connection, the peer can see your public IP. That's inherent to peer-to-peer WebRTC; hiding it would need a relay-only TURN setup, which is out of scope.
+
+**Checked and fine:** XSS (chat text is rendered by React and escaped; marker HTML is static). SQL injection (Prisma parameterizes queries). Raw location is never stored (only the offset position is saved).
+
+### Fixes
+
+_In progress._
 
 ## Phase 4 — Make it better
 
