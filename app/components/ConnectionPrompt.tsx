@@ -14,6 +14,7 @@ export default function ConnectionPrompt({
   declineLabel,
   onAccept,
   onDecline,
+  onBlock,
 }: {
   title: string;
   subtitle?: string;
@@ -26,6 +27,8 @@ export default function ConnectionPrompt({
   declineLabel: string;
   onAccept: () => void;
   onDecline: () => void;
+  /** Optional quiet escape hatch for repeated / unwanted requests. */
+  onBlock?: () => void;
 }) {
   return (
     <div className="absolute inset-0 z-40 flex items-end justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center">
@@ -68,6 +71,14 @@ export default function ConnectionPrompt({
             {acceptLabel}
           </button>
         </div>
+        {onBlock && (
+          <button
+            onClick={onBlock}
+            className="mt-4 text-xs text-zinc-500 underline-offset-4 transition hover:text-zinc-300 hover:underline"
+          >
+            Block this person
+          </button>
+        )}
       </div>
     </div>
   );

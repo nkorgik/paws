@@ -55,3 +55,34 @@ model Signal {
 
   @@index([toId])
 }
+
+// A user blocked another for this session: neither sees the other on the map
+// and requests between them are auto-declined. Deleted when either leaves.
+model Block {
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+// One report per reporter/reported pair. Keyed on hashed IPs too, so enough
+// independent reports can pause someone even if they reload for a new
+// session. Swept after the report window.
+model Report {
+  reporterId    String
+  reportedId    String
+  reporterIpKey String
+  reportedIpKey String
+  createdAt     DateTime @default(now())
+
+  @@id([reporterId, reportedId])
+  @@index([reportedIpKey, createdAt])
+}
+
+// A hashed IP paused after repeated reports; can't join until `until`.
+model Suspension {
+  ipKey String   @id
+  until DateTime
+}

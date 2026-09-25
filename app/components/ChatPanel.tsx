@@ -6,6 +6,7 @@ import {
   IconLock,
   IconPhoneEnd,
   IconSend,
+  IconShield,
   IconVideo,
   IconX,
   Spinner,
@@ -28,6 +29,7 @@ export default function ChatPanel({
   flare,
   hidden = false,
   onClose,
+  onSafety,
   onSend,
   onStartVideo,
   onEnd,
@@ -44,6 +46,7 @@ export default function ChatPanel({
   hidden?: boolean;
   /** When set (during video), a close button replaces the video button. */
   onClose?: () => void;
+  onSafety: () => void;
   onSend: (text: string) => void;
   onStartVideo: () => void;
   onEnd: () => void;
@@ -118,6 +121,14 @@ export default function ChatPanel({
             <IconVideo />
           </button>
         )}
+        <button
+          onClick={onSafety}
+          aria-label="Block or report"
+          title="Block or report"
+          className="btn btn-glass size-10"
+        >
+          <IconShield />
+        </button>
         <button
           onClick={onEnd}
           aria-label="End chat"

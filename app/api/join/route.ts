@@ -8,6 +8,7 @@ import {
   rateLimited,
   tooManyRequests,
 } from "@/lib/ratelimit";
+import { suspendedUntil } from "@/lib/safety";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,14 @@ export async function POST(request: NextRequest) {
   const ipKey = clientIpKey(request);
   if (await rateLimited(`join:${ipKey}`, LIMITS.joinPerIp)) {
     return tooManyRequests();
+  }
+  // Paused after repeated reports from other people.
+  const until = await suspendedUntil(ipKey);
+  if (until) {
+    return Response.json(
+      { error: "suspended", until: until.toISOString() },
+      { status: 403 },
+    );
   }
 
   let body: unknown;

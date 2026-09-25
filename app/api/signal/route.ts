@@ -4,6 +4,7 @@ import type { SignalType } from "@/lib/types";
 import { bearerToken, findSession, isValidId } from "@/lib/auth";
 import { unpair } from "@/lib/pairing";
 import { normalizePayload } from "@/lib/payload";
+import { isBlockedPair } from "@/lib/safety";
 import { LIMITS, rateLimited, tooManyRequests } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
@@ -72,8 +73,9 @@ export async function POST(request: NextRequest) {
         where: { id: toId },
         select: { busy: true },
       });
-      if (!target || target.busy) {
-        // Offline or already connected — auto-decline instead of delivering.
+      if (!target || target.busy || (await isBlockedPair(fromId, toId))) {
+        // Offline, already connected, or one blocked the other — auto-decline
+        // instead of delivering (a block looks like any other decline).
         await deliver(toId, fromId, "decline", null);
         return Response.json({ ok: true, autoDeclined: true });
       }

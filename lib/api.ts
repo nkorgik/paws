@@ -11,16 +11,44 @@ function authHeaders(token: string): HeadersInit {
   };
 }
 
+export type JoinResult = { ok: true } | { ok: false; suspended: boolean };
+
 export async function join(
   session: Session,
   lat: number,
   lng: number,
-): Promise<void> {
-  await fetch("/api/join", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: session.id, token: session.token, lat, lng }),
-  });
+): Promise<JoinResult> {
+  try {
+    const res = await fetch("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: session.id, token: session.token, lat, lng }),
+    });
+    if (res.ok) return { ok: true };
+    const body = await res.json().catch(() => ({}));
+    return { ok: false, suspended: body.error === "suspended" };
+  } catch {
+    return { ok: false, suspended: false };
+  }
+}
+
+// Block someone, or report them (which also blocks). Ends any chat with
+// them server-side.
+export async function safetyAction(
+  token: string,
+  peerId: string,
+  action: "block" | "report",
+): Promise<boolean> {
+  try {
+    const res = await fetch("/api/safety", {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ peerId, action }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function poll(token: string): Promise<PollResponse> {

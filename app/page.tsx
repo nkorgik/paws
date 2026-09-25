@@ -10,10 +10,18 @@ import TopBar from "./components/TopBar";
 import StatusPill from "./components/StatusPill";
 import Dock from "./components/Dock";
 import FlareComposer from "./components/FlareComposer";
+import SafetySheet from "./components/SafetySheet";
 import { IconVideo } from "./components/icons";
 import { dotColor } from "@/lib/colors";
 import { describeDistance, distanceKm } from "@/lib/geo";
-import { join, leave, poll, sendSignal, setStatus } from "@/lib/api";
+import {
+  join,
+  leave,
+  poll,
+  safetyAction,
+  sendSignal,
+  setStatus,
+} from "@/lib/api";
 import { createSession } from "@/lib/session";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
 import { POLL_INTERVAL_MS } from "@/lib/presence";
@@ -29,6 +37,8 @@ type Conn =
 type VideoState = "none" | "requesting" | "incoming" | "active";
 
 const REQUEST_TIMEOUT_MS = 30_000;
+const PAUSED_MESSAGE =
+  "You've been paused for a little while after reports from other people. Please come back later.";
 
 export default function Home() {
   const [phase, setPhase] = useState<"gate" | "live">("gate");
@@ -51,6 +61,8 @@ export default function Home() {
   );
   const myFlareRef = useRef(myFlare);
   const [flareOpen, setFlareOpen] = useState(false);
+  const [safetyOpen, setSafetyOpen] = useState(false);
+  const [gateError, setGateError] = useState<string | null>(null);
   useEffect(() => {
     myFlareRef.current = myFlare;
     if (!myFlare) return;
@@ -325,8 +337,10 @@ export default function Home() {
   }
 
   const processSignalRef = useRef(processSignal);
+  const teardownRef = useRef(teardown);
   useEffect(() => {
     processSignalRef.current = processSignal;
+    teardownRef.current = teardown;
   });
 
   // Poll from the moment the page opens: before joining, the globe behind
@@ -344,7 +358,16 @@ export default function Home() {
         // others can see our dot again.
         if (!data.present && locationRef.current) {
           const { lat, lng } = locationRef.current;
-          await join(session, lat, lng);
+          const res = await join(session, lat, lng);
+          if (!res.ok && res.suspended) {
+            // Paused after reports: back to the entry card with an explanation.
+            teardownRef.current();
+            locationRef.current = null;
+            setMyLocation(null);
+            setMyFlare(null);
+            setGateError(PAUSED_MESSAGE);
+            setPhase("gate");
+          }
           // A re-join creates a fresh row; put our flare back on it.
           const f = myFlareRef.current;
           if (f && f.expiresAt > Date.now()) {
@@ -375,11 +398,49 @@ export default function Home() {
     };
   }, [session, phase]);
 
-  async function handleReady(lat: number, lng: number) {
+  // Join first, so a paused user stays on the entry card with a message
+  // instead of landing on a map where nobody can see them.
+  async function handleReady(lat: number, lng: number): Promise<string | null> {
+    const res = await join(session, lat, lng);
+    if (!res.ok) {
+      return res.suspended
+        ? PAUSED_MESSAGE
+        : "Couldn't join right now. Please try again.";
+    }
+    setGateError(null);
     setMyLocation({ lat, lng });
     locationRef.current = { lat, lng };
-    await join(session, lat, lng);
     setPhase("live");
+    return null;
+  }
+
+  // Block / report whoever we're talking to. Leave the conversation right
+  // away (optimistically) so a slow network never keeps you in a chat with
+  // someone you just reported; the server ends it for them without saying
+  // why. If the request fails, still end the chat and say so.
+  async function runSafety(action: "block" | "report") {
+    const c = connRef.current;
+    if (c.kind === "idle") return;
+    setSafetyOpen(false);
+    teardown(
+      action === "report"
+        ? "Reported and blocked. Thanks for keeping Pulse safe."
+        : "Blocked. You won't see each other again.",
+    );
+    const ok = await safetyAction(session.token, c.peerId, action);
+    if (!ok) {
+      void sendSignal(session.token, c.peerId, "end");
+      showNotice(`Chat ended, but the ${action} didn't go through. Please try again.`);
+    }
+  }
+
+  function blockIncoming() {
+    const c = connRef.current;
+    if (c.kind !== "incoming") return;
+    setConn({ kind: "idle" });
+    void safetyAction(session.token, c.peerId, "block").then((ok) =>
+      showNotice(ok ? "Blocked. You won't see each other again." : "Couldn't block. Please try again."),
+    );
   }
 
   const inChat = conn.kind === "connecting" || conn.kind === "connected";
@@ -404,7 +465,11 @@ export default function Home() {
           onPeerClick={() => {}}
           canConnect={false}
         />
-        <EntryGate online={peers.length} onReady={handleReady} />
+        <EntryGate
+          online={peers.length}
+          initialError={gateError}
+          onReady={handleReady}
+        />
       </main>
     );
   }
@@ -430,6 +495,10 @@ export default function Home() {
           flare={myFlare}
           onOpenFlare={() => setFlareOpen(true)}
         />
+      )}
+
+      {safetyOpen && inChat && (
+        <SafetySheet onAction={runSafety} onClose={() => setSafetyOpen(false)} />
       )}
 
       {flareOpen && (
@@ -470,6 +539,7 @@ export default function Home() {
           declineLabel="Not now"
           onAccept={acceptIncoming}
           onDecline={declineIncoming}
+          onBlock={blockIncoming}
         />
       )}
 
@@ -488,6 +558,7 @@ export default function Home() {
             addMessage(true, text);
           }}
           onStartVideo={startVideoRequest}
+          onSafety={() => setSafetyOpen(true)}
           onEnd={endConnection}
         />
       )}
@@ -523,6 +594,7 @@ export default function Home() {
           chatOpen={chatOpen}
           unread={unread}
           onToggleChat={() => setChatOpen(!chatOpen)}
+          onSafety={() => setSafetyOpen(true)}
           onEnd={endVideo}
         />
       )}

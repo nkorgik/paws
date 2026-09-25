@@ -10,6 +10,7 @@ export const LIMITS = {
   signalPerSession: { limit: 60, windowSec: 10 }, // handshakes burst ~20-30
   mailbox: 100, // pending signals per recipient
   statusPerSession: { limit: 8, windowSec: 600 }, // flare / DND changes
+  safetyPerSession: { limit: 10, windowSec: 600 }, // blocks + reports
   payloadBytes: 16 * 1024, // SDP offers/answers are a few KB
 };
 

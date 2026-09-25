@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { STALE_MS, SIGNAL_TTL_MS } from "@/lib/presence";
 import type { PollResponse } from "@/lib/types";
+import { blockedPeers, sweepSafety } from "@/lib/safety";
 import { bearerToken, hashToken } from "@/lib/auth";
 import {
   LIMITS,
@@ -49,7 +50,10 @@ export async function GET(request: NextRequest) {
   await prisma.presence.deleteMany({ where: { lastSeen: { lt: staleCutoff } } });
   await prisma.signal.deleteMany({ where: { createdAt: { lt: signalCutoff } } });
   // Expired rate-limit counters don't need sweeping on every poll.
-  if (Math.random() < 0.1) await sweepRateLimits();
+  if (Math.random() < 0.1) {
+    await sweepRateLimits();
+    await sweepSafety();
+  }
 
   // 3) Online peers, excluding self.
   const peers = await prisma.presence.findMany({
@@ -81,9 +85,12 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // People you blocked, or who blocked you, don't see each other.
+  const hidden = id ? await blockedPeers(id) : new Set<string>();
+
   const response: PollResponse = {
     present: id !== null,
-    peers: peers.map((p) => ({
+    peers: peers.filter((p) => !hidden.has(p.id)).map((p) => ({
       id: p.id,
       lat: p.lat,
       lng: p.lng,

@@ -28,6 +28,7 @@ export default function VideoPanel({
   chatOpen,
   unread,
   onToggleChat,
+  onSafety,
   onEnd,
 }: {
   localStream: MediaStream | null;
@@ -37,6 +38,7 @@ export default function VideoPanel({
   chatOpen: boolean;
   unread: number;
   onToggleChat: () => void;
+  onSafety: () => void;
   onEnd: () => void;
 }) {
   const localRef = useRef<HTMLVideoElement>(null);
@@ -208,6 +210,14 @@ export default function VideoPanel({
                 {unread > 9 ? "9+" : unread}
               </span>
             )}
+          </button>
+          <button
+            onClick={onSafety}
+            aria-label="Block or report"
+            title="Block or report"
+            className="btn btn-glass size-12"
+          >
+            <IconShield />
           </button>
           <button
             onClick={onEnd}
