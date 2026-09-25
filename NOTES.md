@@ -35,6 +35,13 @@
 - **Fix:** added `min-h-0` to the video area so it shrinks to fit the remaining space and the bar stays visible.
 - **File:** `app/components/VideoPanel.tsx`
 
+### 5. Users couldn't connect again after ending a chat
+
+- **Symptom:** after two users end a chat, any new request to either of them is instantly "declined", and their dots stay dimmed.
+- **Cause:** `/api/signal` keeps a `busy` flag on each user so they can only be in one connection at a time. `accept` sets both users to `busy: true`, but only `decline` set them back to `false`. `end` didn't, even though the comment above that code says "decline/end: free both peers". After the first chat, both users stayed busy for the rest of the session, and every new request to them was auto-declined.
+- **Fix:** `end` now also sets both users back to `busy: false`.
+- **File:** `app/api/signal/route.ts`
+
 ## Phase 2 — Make it good
 
 _TODO_
