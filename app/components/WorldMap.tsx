@@ -4,18 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { Map as MapboxMap, Marker } from "mapbox-gl";
 import type { PeerDot } from "@/lib/types";
+import { dotColor } from "@/lib/colors";
 
 // No fallback token: without one we show the "set NEXT_PUBLIC_MAPBOX_TOKEN"
 // message below instead of silently loading a blank map.
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
-
-function dotColor(id: string): string {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  }
-  return `hsl(${Math.abs(hash) % 360}, 70%, 60%)`;
-}
 
 export default function WorldMap({
   peers,
@@ -93,10 +86,9 @@ export default function WorldMap({
       if (!meMarkerRef.current) {
         const el = document.createElement("div");
         el.className = "pulse-me";
-        el.title = "You are here";
-        el.innerHTML = `<span class="pulse-me-label">Me</span>📍`;
-        // anchor "bottom" → the pin's tip sits on the exact coordinate.
-        meMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: "bottom" })
+        el.title = "You are here (only you see this exact spot)";
+        el.innerHTML = `<span class="pulse-me-label">You</span>`;
+        meMarkerRef.current = new mapboxgl.Marker({ element: el })
           .setLngLat([me.lng, me.lat])
           .addTo(map);
       } else {
@@ -127,10 +119,11 @@ export default function WorldMap({
         if (!marker) {
           const el = document.createElement("button");
           el.className = "pulse-dot";
-          el.style.background = dotColor(peer.id);
-          el.title = "Tap to connect";
+          el.style.setProperty("--dot", dotColor(peer.id));
           el.addEventListener("click", (e) => {
             e.stopPropagation();
+            // Busy users would just auto-decline, so don't even ask.
+            if (el.dataset.busy === "true") return;
             if (canConnectRef.current) onPeerClickRef.current(peer.id);
           });
           marker = new mapboxgl.Marker({ element: el })
@@ -138,7 +131,11 @@ export default function WorldMap({
             .addTo(map);
           markers.set(peer.id, marker);
         }
-        marker.getElement().style.opacity = peer.busy ? "0.35" : "1";
+        const el = marker.getElement();
+        el.dataset.busy = String(peer.busy);
+        const label = peer.busy ? "Stranger (in a chat)" : "Connect with stranger";
+        el.title = label;
+        el.setAttribute("aria-label", label);
       }
 
       // Drop markers for peers that went offline / got filtered out.
