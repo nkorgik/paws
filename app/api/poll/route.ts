@@ -57,7 +57,14 @@ export async function GET(request: NextRequest) {
       ...(id ? { id: { not: id } } : {}),
       lastSeen: { gte: staleCutoff },
     },
-    select: { id: true, lat: true, lng: true, busy: true },
+    select: {
+      id: true,
+      lat: true,
+      lng: true,
+      busy: true,
+      flare: true,
+      flareExpiresAt: true,
+    },
   });
 
   // 4) Drain this user's mailbox: read, then delete exactly what we read so a
@@ -81,6 +88,11 @@ export async function GET(request: NextRequest) {
       lat: p.lat,
       lng: p.lng,
       busy: p.busy,
+      // Expired flares are simply not shown (no sweep needed).
+      flare:
+        p.flare && p.flareExpiresAt && p.flareExpiresAt.getTime() > now
+          ? p.flare
+          : null,
     })),
     signals: inbox.map((s) => ({
       id: s.id,
