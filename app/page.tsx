@@ -7,6 +7,10 @@ import ConnectionPrompt from "./components/ConnectionPrompt";
 import ChatPanel, { type ChatMessage } from "./components/ChatPanel";
 import VideoPanel from "./components/VideoPanel";
 import TopBar from "./components/TopBar";
+import StatusPill from "./components/StatusPill";
+import { IconVideo } from "./components/icons";
+import { dotColor } from "@/lib/colors";
+import { describeDistance, distanceKm } from "@/lib/geo";
 import { join, leave, poll, sendSignal } from "@/lib/api";
 import { createSession } from "@/lib/session";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
@@ -327,6 +331,13 @@ export default function Home() {
   }
 
   const inChat = conn.kind === "connecting" || conn.kind === "connected";
+  const peerId = conn.kind === "idle" ? null : conn.peerId;
+
+  // "about 40 km away" for whoever we're dealing with, from dot positions.
+  function distanceTo(id: string): string | undefined {
+    const p = peers.find((d) => d.id === id);
+    return p && myLocation ? describeDistance(distanceKm(myLocation, p)) : undefined;
+  }
 
   // The map is always mounted: the entry card floats over the spinning globe,
   // and entering flies the same camera down to you.
@@ -354,29 +365,42 @@ export default function Home() {
       />
       <TopBar online={peers.length + 1} />
 
+      {conn.kind === "idle" && !notice && (
+        <StatusPill position="bottom" quiet>
+          <span className="pr-3">
+            {peers.length === 0
+              ? "No one else is here yet. Open Pulse in another window to try it."
+              : "Tap a dot to start a conversation"}
+          </span>
+        </StatusPill>
+      )}
+
       {notice && (
-        <div className="absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">
-          {notice}
-        </div>
+        <StatusPill key={notice}>
+          <span className="pr-3">{notice}</span>
+        </StatusPill>
       )}
 
       {conn.kind === "requesting" && (
-        <div className="absolute left-1/2 top-20 z-30 flex -translate-x-1/2 items-center gap-3 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">
-          <span>Requesting connection…</span>
-          <button
-            onClick={cancelRequest}
-            className="rounded-full bg-zinc-700 px-3 py-1 text-xs hover:bg-zinc-600"
-          >
+        <StatusPill>
+          <span
+            className="avatar-ring size-3 shrink-0 rounded-full"
+            style={{ background: dotColor(conn.peerId), ["--dot" as string]: dotColor(conn.peerId) }}
+          />
+          <span className="truncate">Waiting for them to accept…</span>
+          <button onClick={cancelRequest} className="btn btn-glass h-8 px-3.5 text-xs">
             Cancel
           </button>
-        </div>
+        </StatusPill>
       )}
 
       {conn.kind === "incoming" && (
         <ConnectionPrompt
-          title="A stranger wants to connect"
+          title="Someone wants to talk"
+          subtitle={`A stranger ${distanceTo(conn.peerId) ?? "somewhere on the map"} wants to connect.`}
+          color={dotColor(conn.peerId)}
           acceptLabel="Accept"
-          declineLabel="Decline"
+          declineLabel="Not now"
           onAccept={acceptIncoming}
           onDecline={declineIncoming}
         />
@@ -397,17 +421,23 @@ export default function Home() {
       )}
 
       {video === "requesting" && (
-        <div className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">
-          Waiting for stranger to accept video…
-        </div>
+        <StatusPill>
+          <IconVideo className="size-4 shrink-0 text-emerald-300" />
+          <span className="truncate">Waiting for them to turn on video…</span>
+          <button onClick={endVideo} className="btn btn-glass h-8 px-3.5 text-xs">
+            Cancel
+          </button>
+        </StatusPill>
       )}
 
-      {video === "incoming" && (
+      {video === "incoming" && peerId && (
         <ConnectionPrompt
-          title="Start video call?"
-          subtitle="The stranger wants to turn on video."
-          acceptLabel="Accept"
-          declineLabel="Decline"
+          title="Turn on video?"
+          subtitle="They'd like to see you. Your camera and mic stay off until you accept."
+          color={dotColor(peerId)}
+          icon={<IconVideo />}
+          acceptLabel="Start video"
+          declineLabel="Not now"
           onAccept={acceptVideo}
           onDecline={declineVideo}
         />

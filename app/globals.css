@@ -300,3 +300,8 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Avatar in a stranger's hue with the same halo as their dot. */
+.avatar-ring {
+  animation: dot-ring 2.4s ease-out infinite;
+}
