@@ -11,16 +11,44 @@ function authHeaders(token: string): HeadersInit {
   };
 }
 
+export type JoinResult = { ok: true } | { ok: false; suspended: boolean };
+
 export async function join(
   session: Session,
   lat: number,
   lng: number,
-): Promise<void> {
-  await fetch("/api/join", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: session.id, token: session.token, lat, lng }),
-  });
+): Promise<JoinResult> {
+  try {
+    const res = await fetch("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: session.id, token: session.token, lat, lng }),
+    });
+    if (res.ok) return { ok: true };
+    const body = await res.json().catch(() => ({}));
+    return { ok: false, suspended: body.error === "suspended" };
+  } catch {
+    return { ok: false, suspended: false };
+  }
+}
+
+// Block someone, or report them (which also blocks). Ends any chat with
+// them server-side.
+export async function safetyAction(
+  token: string,
+  peerId: string,
+  action: "block" | "report",
+): Promise<boolean> {
+  try {
+    const res = await fetch("/api/safety", {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ peerId, action }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function poll(token: string): Promise<PollResponse> {
@@ -62,5 +90,37 @@ export function leave(token: string): void {
       body,
       keepalive: true,
     });
+  }
+}
+
+export type StatusResult =
+  | { ok: true; flare: string | null; expiresAt?: string; dnd: boolean }
+  | { ok: false; error: string };
+
+// Set (moderated server-side) or clear (null) the flare on our dot, and/or
+// toggle do not disturb.
+export async function setStatus(
+  token: string,
+  status: { flare?: string | null; dnd?: boolean },
+): Promise<StatusResult> {
+  try {
+    const res = await fetch("/api/status", {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(status),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) {
+      return {
+        ok: true,
+        flare: body.flare ?? null,
+        expiresAt: body.expiresAt,
+        dnd: body.dnd === true,
+      };
+    }
+    if (res.status === 429) return { ok: false, error: "Slow down a little and try again." };
+    return { ok: false, error: body.error ?? "Couldn't update that. Try again." };
+  } catch {
+    return { ok: false, error: "You're offline. Try again." };
   }
 }

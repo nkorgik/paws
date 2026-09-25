@@ -17,11 +17,13 @@ const LIVE_ZOOM = 4.2;
 export default function WorldMap({
   peers,
   me,
+  myFlare = null,
   onPeerClick,
   canConnect,
 }: {
   peers: PeerDot[];
   me: { lat: number; lng: number } | null;
+  myFlare?: string | null;
   onPeerClick: (id: string) => void;
   canConnect: boolean;
 }) {
@@ -137,7 +139,10 @@ export default function WorldMap({
         const el = document.createElement("div");
         el.className = "pulse-me";
         el.title = "You are here (only you see this exact spot)";
-        el.innerHTML = `<span class="pulse-me-label">You</span>`;
+        const label = document.createElement("span");
+        label.className = "pulse-me-label";
+        label.textContent = "You";
+        el.appendChild(label);
         meMarkerRef.current = new mapboxgl.Marker({ element: el })
           .setLngLat([me.lng, me.lat])
           .addTo(map);
@@ -158,6 +163,15 @@ export default function WorldMap({
     };
   }, [me, ready]);
 
+  // Your own flare rides on your "You" tag. textContent, never HTML: flares
+  // are user-written.
+  useEffect(() => {
+    const label = meMarkerRef.current
+      ?.getElement()
+      .querySelector(".pulse-me-label");
+    if (label) label.textContent = myFlare ? `You · ${myFlare}` : "You";
+  }, [myFlare, me, ready]);
+
   // Reconcile markers whenever the peer list changes (or the map becomes ready).
   useEffect(() => {
     const map = mapRef.current;
@@ -174,13 +188,17 @@ export default function WorldMap({
         seen.add(peer.id);
         let marker = markers.get(peer.id);
         if (!marker) {
-          const el = document.createElement("button");
-          el.className = "pulse-dot";
+          const el = document.createElement("div");
+          el.className = "pulse-peer";
           el.style.setProperty("--dot", dotColor(peer.id));
+          const dot = document.createElement("button");
+          dot.className = "pulse-dot";
+          el.appendChild(dot);
+          // Clicking the dot or its flare bubble both connect.
           el.addEventListener("click", (e) => {
             e.stopPropagation();
-            // Busy users would just auto-decline, so don't even ask.
-            if (el.dataset.busy === "true") return;
+            // Busy / do-not-disturb users would just auto-decline.
+            if (el.dataset.busy === "true" || el.dataset.dnd === "true") return;
             if (canConnectRef.current) onPeerClickRef.current(peer.id);
           });
           marker = new mapboxgl.Marker({ element: el })
@@ -190,9 +208,32 @@ export default function WorldMap({
         }
         const el = marker.getElement();
         el.dataset.busy = String(peer.busy);
-        const label = peer.busy ? "Stranger (in a chat)" : "Connect with stranger";
+        el.dataset.dnd = String(peer.dnd);
+        const label =
+          (peer.busy
+            ? "Stranger (in a chat)"
+            : peer.dnd
+              ? "Stranger (not taking chats right now)"
+              : "Connect with stranger") +
+          (peer.flare ? `: “${peer.flare}”` : "");
+        const dot = el.querySelector<HTMLButtonElement>(".pulse-dot");
+        dot?.setAttribute("aria-label", label);
         el.title = label;
-        el.setAttribute("aria-label", label);
+
+        // Flare bubble: create / update / remove. textContent only —
+        // flares are user-written.
+        let bubble = el.querySelector<HTMLSpanElement>(".pulse-flare");
+        if (peer.flare) {
+          if (!bubble) {
+            bubble = document.createElement("span");
+            bubble.className = "pulse-flare";
+            bubble.setAttribute("aria-hidden", "true");
+            el.appendChild(bubble);
+          }
+          if (bubble.textContent !== peer.flare) bubble.textContent = peer.flare;
+        } else {
+          bubble?.remove();
+        }
       }
 
       // Drop markers for peers that went offline / got filtered out.

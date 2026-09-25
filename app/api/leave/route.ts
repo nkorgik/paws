@@ -45,6 +45,10 @@ export async function POST(request: NextRequest) {
     where: { OR: [{ toId: id }, { fromId: id }] },
   });
   await prisma.presence.deleteMany({ where: { id } });
+  // Blocks only mean something between live sessions.
+  await prisma.block.deleteMany({
+    where: { OR: [{ blockerId: id }, { blockedId: id }] },
+  });
 
   // Free each linked peer and tell them it ended. Done after the deletes
   // above so these "end"s aren't wiped along with our other signals.

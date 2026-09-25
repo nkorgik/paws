@@ -12,18 +12,24 @@ datasource db {
 }
 
 model Presence {
-  id        String   @id // client-generated session uuid (public)
-  tokenHash String   @unique // sha256 of the tab's secret session token
-  lat       Float // ALREADY privacy-offset coords (raw is never stored)
-  lng       Float
-  busy      Boolean  @default(false) // true while in an active connection
+  id             String    @id // client-generated session uuid (public)
+  tokenHash      String    @unique // sha256 of the tab's secret session token
+  lat            Float // ALREADY privacy-offset coords (raw is never stored)
+  lng            Float
+  busy           Boolean   @default(false) // true while in an active connection
   // Who this user has requested (busy=false) or is connected to (busy=true).
   // Lets the server check every signal against a real request/connection.
-  peerId    String?
+  peerId         String?
   // Keyed hash of the client IP (never the IP itself), used to cap live
   // sessions per IP. Deleted with the row when the session ends.
-  ipKey     String?
-  lastSeen  DateTime
+  ipKey          String?
+  // Optional public note on the dot ("anyone up for chess?"), moderated on
+  // write and hidden once it expires. Gone with the row when the session ends.
+  flare          String?
+  flareExpiresAt DateTime?
+  // Do not disturb: stays on the map, but requests are auto-declined.
+  dnd            Boolean   @default(false)
+  lastSeen       DateTime
 
   @@index([lastSeen])
   @@index([peerId])
@@ -50,4 +56,35 @@ model Signal {
   createdAt DateTime @default(now())
 
   @@index([toId])
+}
+
+// A user blocked another for this session: neither sees the other on the map
+// and requests between them are auto-declined. Deleted when either leaves.
+model Block {
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+// One report per reporter/reported pair. Keyed on hashed IPs too, so enough
+// independent reports can pause someone even if they reload for a new
+// session. Swept after the report window.
+model Report {
+  reporterId    String
+  reportedId    String
+  reporterIpKey String
+  reportedIpKey String
+  createdAt     DateTime @default(now())
+
+  @@id([reporterId, reportedId])
+  @@index([reportedIpKey, createdAt])
+}
+
+// A hashed IP paused after repeated reports; can't join until `until`.
+model Suspension {
+  ipKey String   @id
+  until DateTime
 }

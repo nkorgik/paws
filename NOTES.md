@@ -177,4 +177,31 @@ I reviewed all four API routes (`join`, `poll`, `signal`, `leave`) plus the clie
 
 ## Phase 4 — Make it better
 
-_TODO_
+**The problem I picked:** Pulse had two gaps. It wasn't very *alive*: every dot looked the same, so tapping one was a blind guess and there was no reason to talk to anyone in particular. And it wasn't *safe*: anonymous strangers plus video, with no way to protect yourself beyond hanging up. So I built one story in two halves: **a reason to connect, and a safe way to do it.**
+
+### Flares (alive)
+A flare is a short note on your dot ("♟️ chess, anyone?", "🌙 can't sleep", "practicing Spanish") that everyone sees for 15 minutes. It turns random tapping into choosing someone to talk to, and it makes the globe feel inhabited.
+- **UX:** an "Add a flare" button in a bottom dock opens a glass composer with suggestion chips and a live character count. Flares float over dots as small glass bubbles edged in that user's color (tapping one connects). They show up in the connection prompt as a quote, and in the empty chat as an icebreaker. Your own flare rides on your "You" tag, with the time left shown in the dock.
+- **Privacy / statelessness kept:** a flare lives on the presence row, expires after 15 minutes, and disappears with the session. There's no history.
+- **Moderation, on every write** (`lib/moderation.ts`): public text from strangers is where abuse starts, so this is strict. 60-character cap, control and zero-width characters stripped, NFKC-normalized. **No links, emails, phone numbers, @handles or contact apps**: moving someone off-platform is the classic first step of scams and grooming. A blocklist for sexual solicitation and slurs, checked after folding leetspeak and separators ("s3nd n.u.d.e.s" is caught, "Dickens" and "document" aren't). Rate-limited per session. Rendered with `textContent` only. Reporting someone takes their flare down immediately.
+- Trade-off: a word list is a floor, not a solution. With more time I'd add a small classifier and let users report the flare itself.
+
+### Safety kit (safe)
+- **Consent-first video:** the stranger's video starts **heavily blurred** with a glass "Their video is blurred" card. You reveal it when you're comfortable and can blur it again any time. It's purely local, with no protocol change, and it targets the most notorious problem of random video chat: getting flashed the moment a call connects.
+- **Block:** from the chat header, the video controls, or a quiet "Block this person" link on incoming requests. It's enforced on the server and applies both ways for the session: you disappear from each other's maps, requests between you are auto-declined (indistinguishable from a normal decline), and any chat ends immediately.
+- **Report & block:** also counts toward a **pause**. Reports from **3 different IPs within 30 minutes** pause that IP for 15 minutes: every session from it leaves the map and can't rejoin, and its chat partners get a clean "end". Only distinct IPs count, and reports from the reported user's own IP don't, so one person with many tabs can't get someone paused. The reporter gets the same response either way, so it can't be probed. Everything is keyed on session IDs and HMAC'd IPs, and it all expires by itself (no permanent records, in line with "stateless by design").
+- **Do not disturb:** stay on the map (a quiet hollow ring others can't tap) while requests to you are auto-declined on the server.
+- **UX details:** leaving after block/report is optimistic, so a slow network never keeps you in a chat with someone you just reported. Paused users go back to the entry card with a plain explanation instead of a silently broken map.
+
+### Verified
+- Moderation: 25 cases (clean vs abusive, including leetspeak and zero-width tricks).
+- Flares API: set, seen by others, rejected flares don't replace the current one, clear, 401.
+- Safety API, 19 checks: mutual hiding, auto-decline both ways, block ends an active chat, the flare comes down on the first report, the pause needs 3 distinct IPs (same-IP and self-IP reports ignored), paused IPs can't rejoin even as a new session, other users unaffected, cleanup on leave. Distinct IPs were simulated with `x-real-ip`, which Vercel sets itself in production.
+- DND API: 7 checks. Earlier security suites still pass.
+- UI checked in the browser: composer and inline moderation errors, bubbles on the map, the quote in the prompt, the blurred-video card and reveal, the safety sheet, blocking from the prompt, the paused-user entry card, and DND dots.
+
+### Next with more time
+- A reportable flag on flares themselves, plus a small toxicity classifier.
+- Showing matching flares first ("3 people nearby want to talk music").
+- Letting DND users still accept requests from people whose flare matches theirs.
+- An opt-in TURN relay mode ("hide my IP from the person I'm talking to").

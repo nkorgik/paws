@@ -8,15 +8,19 @@ const EXIT_MS = 260;
 
 export default function EntryGate({
   online,
+  initialError = null,
   onReady,
 }: {
   online: number;
-  onReady: (lat: number, lng: number) => void;
+  /** Shown straight away, e.g. when sent back here after being paused. */
+  initialError?: string | null;
+  /** Resolves to an error message if joining failed, else null. */
+  onReady: (lat: number, lng: number) => Promise<string | null>;
 }) {
   const [status, setStatus] = useState<"idle" | "locating" | "leaving" | "error">(
-    "idle",
+    initialError ? "error" : "idle",
   );
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState<string>(initialError ?? "");
 
   function enter() {
     if (!("geolocation" in navigator)) {
@@ -28,10 +32,14 @@ export default function EntryGate({
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setStatus("leaving");
-        window.setTimeout(
-          () => onReady(pos.coords.latitude, pos.coords.longitude),
-          EXIT_MS,
-        );
+        window.setTimeout(async () => {
+          const err = await onReady(pos.coords.latitude, pos.coords.longitude);
+          if (err) {
+            // Bring the card back with the reason.
+            setStatus("error");
+            setError(err);
+          }
+        }, EXIT_MS);
       },
       (err) => {
         setStatus("error");

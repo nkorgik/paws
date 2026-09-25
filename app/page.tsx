@@ -8,10 +8,20 @@ import ChatPanel, { type ChatMessage } from "./components/ChatPanel";
 import VideoPanel from "./components/VideoPanel";
 import TopBar from "./components/TopBar";
 import StatusPill from "./components/StatusPill";
+import Dock from "./components/Dock";
+import FlareComposer from "./components/FlareComposer";
+import SafetySheet from "./components/SafetySheet";
 import { IconVideo } from "./components/icons";
 import { dotColor } from "@/lib/colors";
 import { describeDistance, distanceKm } from "@/lib/geo";
-import { join, leave, poll, sendSignal } from "@/lib/api";
+import {
+  join,
+  leave,
+  poll,
+  safetyAction,
+  sendSignal,
+  setStatus,
+} from "@/lib/api";
 import { createSession } from "@/lib/session";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
 import { POLL_INTERVAL_MS } from "@/lib/presence";
@@ -27,6 +37,8 @@ type Conn =
 type VideoState = "none" | "requesting" | "incoming" | "active";
 
 const REQUEST_TIMEOUT_MS = 30_000;
+const PAUSED_MESSAGE =
+  "You've been paused for a little while after reports from other people. Please come back later.";
 
 export default function Home() {
   const [phase, setPhase] = useState<"gate" | "live">("gate");
@@ -41,6 +53,51 @@ export default function Home() {
   );
   // Same location, readable from the poll loop for re-joining.
   const locationRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  // Our flare (public note on our dot). Mirrored in a ref so the poll loop
+  // can restore it after a re-join.
+  const [myFlare, setMyFlare] = useState<{ text: string; expiresAt: number } | null>(
+    null,
+  );
+  const myFlareRef = useRef(myFlare);
+  const [flareOpen, setFlareOpen] = useState(false);
+  const [dnd, _setDnd] = useState(false);
+  const dndRef = useRef(false);
+  function toggleDnd() {
+    const next = !dndRef.current;
+    dndRef.current = next;
+    _setDnd(next);
+    void setStatus(session.token, { dnd: next }).then((res) => {
+      if (!res.ok) {
+        dndRef.current = !next;
+        _setDnd(!next);
+        showNotice(res.error);
+      }
+    });
+  }
+  const [safetyOpen, setSafetyOpen] = useState(false);
+  const [gateError, setGateError] = useState<string | null>(null);
+  useEffect(() => {
+    myFlareRef.current = myFlare;
+    if (!myFlare) return;
+    // Drop it locally when it expires (the server already hides it).
+    const t = setTimeout(() => setMyFlare(null), myFlare.expiresAt - Date.now());
+    return () => clearTimeout(t);
+  }, [myFlare]);
+
+  async function postFlare(text: string): Promise<string | null> {
+    const res = await setStatus(session.token, { flare: text });
+    if (!res.ok) return res.error;
+    if (res.flare && res.expiresAt) {
+      setMyFlare({ text: res.flare, expiresAt: Date.parse(res.expiresAt) });
+    }
+    return null;
+  }
+
+  function clearFlare() {
+    setMyFlare(null);
+    void setStatus(session.token, { flare: null });
+  }
 
   const [conn, _setConn] = useState<Conn>({ kind: "idle" });
   const connRef = useRef<Conn>(conn);
@@ -294,8 +351,10 @@ export default function Home() {
   }
 
   const processSignalRef = useRef(processSignal);
+  const teardownRef = useRef(teardown);
   useEffect(() => {
     processSignalRef.current = processSignal;
+    teardownRef.current = teardown;
   });
 
   // Poll from the moment the page opens: before joining, the globe behind
@@ -313,7 +372,22 @@ export default function Home() {
         // others can see our dot again.
         if (!data.present && locationRef.current) {
           const { lat, lng } = locationRef.current;
-          await join(session, lat, lng);
+          const res = await join(session, lat, lng);
+          if (!res.ok && res.suspended) {
+            // Paused after reports: back to the entry card with an explanation.
+            teardownRef.current();
+            locationRef.current = null;
+            setMyLocation(null);
+            setMyFlare(null);
+            setGateError(PAUSED_MESSAGE);
+            setPhase("gate");
+          }
+          // A re-join creates a fresh row; put our flare / DND back on it.
+          const f = myFlareRef.current;
+          const restore: { flare?: string; dnd?: boolean } = {};
+          if (f && f.expiresAt > Date.now()) restore.flare = f.text;
+          if (dndRef.current) restore.dnd = true;
+          if (Object.keys(restore).length) void setStatus(session.token, restore);
         }
         setPeers(data.peers);
         for (const s of data.signals) processSignalRef.current(s);
@@ -339,15 +413,55 @@ export default function Home() {
     };
   }, [session, phase]);
 
-  async function handleReady(lat: number, lng: number) {
+  // Join first, so a paused user stays on the entry card with a message
+  // instead of landing on a map where nobody can see them.
+  async function handleReady(lat: number, lng: number): Promise<string | null> {
+    const res = await join(session, lat, lng);
+    if (!res.ok) {
+      return res.suspended
+        ? PAUSED_MESSAGE
+        : "Couldn't join right now. Please try again.";
+    }
+    setGateError(null);
     setMyLocation({ lat, lng });
     locationRef.current = { lat, lng };
-    await join(session, lat, lng);
     setPhase("live");
+    return null;
+  }
+
+  // Block / report whoever we're talking to. Leave the conversation right
+  // away (optimistically) so a slow network never keeps you in a chat with
+  // someone you just reported; the server ends it for them without saying
+  // why. If the request fails, still end the chat and say so.
+  async function runSafety(action: "block" | "report") {
+    const c = connRef.current;
+    if (c.kind === "idle") return;
+    setSafetyOpen(false);
+    teardown(
+      action === "report"
+        ? "Reported and blocked. Thanks for keeping Pulse safe."
+        : "Blocked. You won't see each other again.",
+    );
+    const ok = await safetyAction(session.token, c.peerId, action);
+    if (!ok) {
+      void sendSignal(session.token, c.peerId, "end");
+      showNotice(`Chat ended, but the ${action} didn't go through. Please try again.`);
+    }
+  }
+
+  function blockIncoming() {
+    const c = connRef.current;
+    if (c.kind !== "incoming") return;
+    setConn({ kind: "idle" });
+    void safetyAction(session.token, c.peerId, "block").then((ok) =>
+      showNotice(ok ? "Blocked. You won't see each other again." : "Couldn't block. Please try again."),
+    );
   }
 
   const inChat = conn.kind === "connecting" || conn.kind === "connected";
   const peerId = conn.kind === "idle" ? null : conn.peerId;
+
+  const flareOf = (id: string) => peers.find((d) => d.id === id)?.flare ?? undefined;
 
   // "about 40 km away" for whoever we're dealing with, from dot positions.
   function distanceTo(id: string): string | undefined {
@@ -366,7 +480,11 @@ export default function Home() {
           onPeerClick={() => {}}
           canConnect={false}
         />
-        <EntryGate online={peers.length} onReady={handleReady} />
+        <EntryGate
+          online={peers.length}
+          initialError={gateError}
+          onReady={handleReady}
+        />
       </main>
     );
   }
@@ -376,19 +494,37 @@ export default function Home() {
       <WorldMap
         peers={peers}
         me={myLocation}
+        myFlare={myFlare?.text ?? null}
         onPeerClick={requestConnection}
         canConnect={conn.kind === "idle"}
       />
       {video !== "active" && <TopBar online={peers.length + 1} />}
 
-      {conn.kind === "idle" && !notice && (
-        <StatusPill position="bottom" quiet>
-          <span className="pr-3">
-            {peers.length === 0
+      {conn.kind === "idle" && (
+        <Dock
+          hint={
+            peers.length === 0
               ? "No one else is here yet. Open Pulse in another window to try it."
-              : "Tap a dot to start a conversation"}
-          </span>
-        </StatusPill>
+              : "Tap a dot to start a conversation"
+          }
+          flare={myFlare}
+          dnd={dnd}
+          onOpenFlare={() => setFlareOpen(true)}
+          onToggleDnd={toggleDnd}
+        />
+      )}
+
+      {safetyOpen && inChat && (
+        <SafetySheet onAction={runSafety} onClose={() => setSafetyOpen(false)} />
+      )}
+
+      {flareOpen && (
+        <FlareComposer
+          current={myFlare?.text ?? null}
+          onPost={postFlare}
+          onClear={clearFlare}
+          onClose={() => setFlareOpen(false)}
+        />
       )}
 
       {notice && (
@@ -414,11 +550,13 @@ export default function Home() {
         <ConnectionPrompt
           title="Someone wants to talk"
           subtitle={`A stranger ${distanceTo(conn.peerId) ?? "somewhere on the map"} wants to connect.`}
+          quote={flareOf(conn.peerId)}
           color={dotColor(conn.peerId)}
           acceptLabel="Accept"
           declineLabel="Not now"
           onAccept={acceptIncoming}
           onDecline={declineIncoming}
+          onBlock={blockIncoming}
         />
       )}
 
@@ -429,6 +567,7 @@ export default function Home() {
           videoBusy={video !== "none"}
           color={dotColor(conn.peerId)}
           distance={distanceTo(conn.peerId)}
+          flare={flareOf(conn.peerId)}
           hidden={video === "active" && !chatOpen}
           onClose={video === "active" ? () => setChatOpen(false) : undefined}
           onSend={(text) => {
@@ -436,6 +575,7 @@ export default function Home() {
             addMessage(true, text);
           }}
           onStartVideo={startVideoRequest}
+          onSafety={() => setSafetyOpen(true)}
           onEnd={endConnection}
         />
       )}
@@ -471,6 +611,7 @@ export default function Home() {
           chatOpen={chatOpen}
           unread={unread}
           onToggleChat={() => setChatOpen(!chatOpen)}
+          onSafety={() => setSafetyOpen(true)}
           onEnd={endVideo}
         />
       )}
