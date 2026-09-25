@@ -61,7 +61,22 @@
 
 ## Phase 2 — Make it good
 
-_TODO_
+**Direction:** minimal, Apple-style "liquid glass" over the map, keeping the original palette (dark zinc, emerald accent, the dark Mapbox style, and each user's dot hue). The map is the product, so the UI stays out of its way: every control is a small floating glass surface instead of solid panels.
+
+**Design system** (`app/globals.css`): one shared `glass` surface (translucent + `backdrop-filter: blur saturate`, a bright specular top edge and a soft sheen in the upper-left), a denser `glass-strong` for reading surfaces, `btn-primary` / `btn-glass` / `btn-danger` pills, Apple's spring easing (`cubic-bezier(0.32, 0.72, 0, 1)`) for every motion, and `prefers-reduced-motion` support. Fixed a bug where `body` forced Arial, so the Geist font was loaded but never used. The app is now dark-only and draws edge-to-edge on phones (`viewport-fit=cover` + safe-area insets).
+
+**What changed, and why:**
+- **Entry becomes the first "wow" moment.** The map is always mounted. Before joining it's a slowly spinning globe with an emerald-tinted atmosphere that already shows live dots and a live "N people online" count (poll works before join, with no mailbox). The glass card floats over it; "Enter" dissolves the card and the same camera flies down to you. There's no page switch, just one continuous motion.
+- **Map:** dots glow and pulse in their own hue. Busy users are dimmed, desaturated and no longer clickable (a request would just auto-decline). "You" is an emerald dot with a glass tag instead of an emoji pin. Glass top bar (brand + online count), a re-center button, and quieter Mapbox attribution (kept, as required).
+- **Status:** toasts, "waiting for them…" and an idle hint ("Tap a dot…" / "No one else is here yet…") are floating glass pills. Video requests can now be cancelled.
+- **Prompts:** glass card (bottom sheet on phones) with the stranger's dot color as their avatar, so you can connect the prompt to a dot on the map, plus a coarse distance ("A stranger ~300 km away"), computed from the already-offset dot positions, so no extra privacy is lost.
+- **Chat:** a floating glass panel (bottom sheet on phones) with a colored avatar, live status ("Encrypted · ~300 km away"), emerald/glass bubbles that animate in, a pill composer, and an empty state explaining that messages are peer-to-peer and never stored. The input focuses as soon as the connection opens.
+- **Video:** immersive full-bleed call with a waiting state, a mirrored self-view, a call timer, and a glass control bar with **mute mic / camera off** (new; they just toggle local tracks, no renegotiation), a chat toggle with an unread badge, and end video. Previously the video covered the chat entirely; now chat opens over the call, and on large screens the self-view and controls move beside it.
+- **Accessibility:** icon buttons have labels, toggles use `aria-pressed`, prompts are `alertdialog`s with focus on the primary action, status pills are `role="status"`, and focus rings are visible.
+
+**How I checked it:** screenshots of each state in desktop and phone viewports (entry, fly-to, requesting, incoming prompt, chat, video with and without chat). Connected chat and video were previewed with a throwaway page and fake canvas streams, because the embedded browser can't make WebRTC connections. The page wasn't committed.
+
+**Next with more time:** a typing indicator and "seen" receipts over the data channel, gentle haptics on mobile, a light theme, and clustering dots at low zoom when many people are online.
 
 ## Phase 3 — Make it secure
 

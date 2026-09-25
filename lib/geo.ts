@@ -50,3 +50,26 @@ export function isValidLatLng(lat: unknown, lng: unknown): boolean {
     lng <= 180
   );
 }
+
+// Great-circle distance in km (haversine).
+export function distanceKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const r = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * r;
+  const dLng = (b.lng - a.lng) * r;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
+
+// Friendly, deliberately coarse distance label. Peers' dots are already
+// offset 1–3 km, so anything close is just "nearby".
+export function describeDistance(km: number): string {
+  if (km < 5) return "nearby";
+  if (km < 100) return `~${Math.round(km / 5) * 5} km away`;
+  if (km < 1000) return `~${Math.round(km / 50) * 50} km away`;
+  return `~${(Math.round(km / 500) * 500).toLocaleString("en-US")} km away`;
+}

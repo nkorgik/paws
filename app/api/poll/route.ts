@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { isPrismaError, prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { STALE_MS, SIGNAL_TTL_MS } from "@/lib/presence";
 import type { PollResponse } from "@/lib/types";
 import { bearerToken, hashToken } from "@/lib/auth";
@@ -35,16 +35,13 @@ export async function GET(request: NextRequest) {
   // token, the caller was reaped as stale (sleep, offline, throttled
   // background tab) and must re-join, since the heartbeat can't recreate the
   // row on its own. They still get the peer list, but no mailbox.
-  const me = await prisma.presence
-    .update({
-      where: { tokenHash: hashToken(token) },
-      data: { lastSeen: new Date(now) },
-      select: { id: true },
-    })
-    .catch((e) => {
-      if (isPrismaError(e, "P2025")) return null;
-      throw e;
-    });
+  // updateManyAndReturn (not update) so a missing row — normal before the
+  // first join — is an empty result rather than a logged Prisma error.
+  const [me] = await prisma.presence.updateManyAndReturn({
+    where: { tokenHash: hashToken(token) },
+    data: { lastSeen: new Date(now) },
+    select: { id: true },
+  });
   const id = me?.id ?? null;
 
   // 2) Reap stale presence rows and orphaned signals (independent deletes —

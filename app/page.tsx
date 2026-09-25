@@ -6,6 +6,11 @@ import WorldMap from "./components/WorldMap";
 import ConnectionPrompt from "./components/ConnectionPrompt";
 import ChatPanel, { type ChatMessage } from "./components/ChatPanel";
 import VideoPanel from "./components/VideoPanel";
+import TopBar from "./components/TopBar";
+import StatusPill from "./components/StatusPill";
+import { IconVideo } from "./components/icons";
+import { dotColor } from "@/lib/colors";
+import { describeDistance, distanceKm } from "@/lib/geo";
 import { join, leave, poll, sendSignal } from "@/lib/api";
 import { createSession } from "@/lib/session";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
@@ -49,6 +54,19 @@ export default function Home() {
   const setVideo = (v: VideoState) => {
     videoRef.current = v;
     _setVideo(v);
+    // Each call starts immersive (chat tucked away); ending one resets it.
+    if (v === "active" || v === "none") setChatOpen(false);
+  };
+
+  // During video the chat is an overlay the user can open; count messages
+  // that arrive while it's hidden for the badge on the chat button.
+  const [chatOpen, _setChatOpen] = useState(false);
+  const chatOpenRef = useRef(false);
+  const [unread, setUnread] = useState(0);
+  const setChatOpen = (open: boolean) => {
+    chatOpenRef.current = open;
+    _setChatOpen(open);
+    setUnread(0);
   };
 
   const peerRef = useRef<PeerSession | null>(null);
@@ -62,6 +80,9 @@ export default function Home() {
 
   function addMessage(mine: boolean, text: string) {
     setMessages((prev) => [...prev, { id: msgId.current++, mine, text }]);
+    if (!mine && videoRef.current === "active" && !chatOpenRef.current) {
+      setUnread((n) => n + 1);
+    }
   }
 
   function teardown(message?: string) {
@@ -277,8 +298,10 @@ export default function Home() {
     processSignalRef.current = processSignal;
   });
 
+  // Poll from the moment the page opens: before joining, the globe behind
+  // the entry card already shows who's online (the server returns peers but
+  // no mailbox for a session that hasn't joined yet).
   useEffect(() => {
-    if (phase !== "live") return;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -303,7 +326,7 @@ export default function Home() {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [phase, session]);
+  }, [session]);
 
   useEffect(() => {
     if (phase !== "live") return;
@@ -323,11 +346,30 @@ export default function Home() {
     setPhase("live");
   }
 
-  if (phase === "gate") {
-    return <EntryGate onReady={handleReady} />;
+  const inChat = conn.kind === "connecting" || conn.kind === "connected";
+  const peerId = conn.kind === "idle" ? null : conn.peerId;
+
+  // "about 40 km away" for whoever we're dealing with, from dot positions.
+  function distanceTo(id: string): string | undefined {
+    const p = peers.find((d) => d.id === id);
+    return p && myLocation ? describeDistance(distanceKm(myLocation, p)) : undefined;
   }
 
-  const inChat = conn.kind === "connecting" || conn.kind === "connected";
+  // The map is always mounted: the entry card floats over the spinning globe,
+  // and entering flies the same camera down to you.
+  if (phase === "gate") {
+    return (
+      <main className="fixed inset-0 overflow-hidden">
+        <WorldMap
+          peers={peers}
+          me={null}
+          onPeerClick={() => {}}
+          canConnect={false}
+        />
+        <EntryGate online={peers.length} onReady={handleReady} />
+      </main>
+    );
+  }
 
   return (
     <main className="fixed inset-0 overflow-hidden">
@@ -337,30 +379,44 @@ export default function Home() {
         onPeerClick={requestConnection}
         canConnect={conn.kind === "idle"}
       />
+      {video !== "active" && <TopBar online={peers.length + 1} />}
+
+      {conn.kind === "idle" && !notice && (
+        <StatusPill position="bottom" quiet>
+          <span className="pr-3">
+            {peers.length === 0
+              ? "No one else is here yet. Open Pulse in another window to try it."
+              : "Tap a dot to start a conversation"}
+          </span>
+        </StatusPill>
+      )}
 
       {notice && (
-        <div className="absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">
-          {notice}
-        </div>
+        <StatusPill key={notice}>
+          <span className="pr-3">{notice}</span>
+        </StatusPill>
       )}
 
       {conn.kind === "requesting" && (
-        <div className="absolute left-1/2 top-20 z-30 flex -translate-x-1/2 items-center gap-3 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">
-          <span>Requesting connection…</span>
-          <button
-            onClick={cancelRequest}
-            className="rounded-full bg-zinc-700 px-3 py-1 text-xs hover:bg-zinc-600"
-          >
+        <StatusPill>
+          <span
+            className="avatar-ring size-3 shrink-0 rounded-full"
+            style={{ background: dotColor(conn.peerId), ["--dot" as string]: dotColor(conn.peerId) }}
+          />
+          <span className="truncate">Waiting for them to accept…</span>
+          <button onClick={cancelRequest} className="btn btn-glass h-8 px-3.5 text-xs">
             Cancel
           </button>
-        </div>
+        </StatusPill>
       )}
 
       {conn.kind === "incoming" && (
         <ConnectionPrompt
-          title="A stranger wants to connect"
+          title="Someone wants to talk"
+          subtitle={`A stranger ${distanceTo(conn.peerId) ?? "somewhere on the map"} wants to connect.`}
+          color={dotColor(conn.peerId)}
           acceptLabel="Accept"
-          declineLabel="Decline"
+          declineLabel="Not now"
           onAccept={acceptIncoming}
           onDecline={declineIncoming}
         />
@@ -371,6 +427,10 @@ export default function Home() {
           messages={messages}
           connected={conn.kind === "connected"}
           videoBusy={video !== "none"}
+          color={dotColor(conn.peerId)}
+          distance={distanceTo(conn.peerId)}
+          hidden={video === "active" && !chatOpen}
+          onClose={video === "active" ? () => setChatOpen(false) : undefined}
           onSend={(text) => {
             peerRef.current?.sendChat(text);
             addMessage(true, text);
@@ -381,26 +441,36 @@ export default function Home() {
       )}
 
       {video === "requesting" && (
-        <div className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">
-          Waiting for stranger to accept video…
-        </div>
+        <StatusPill>
+          <IconVideo className="size-4 shrink-0 text-emerald-300" />
+          <span className="truncate">Waiting for them to turn on video…</span>
+          <button onClick={endVideo} className="btn btn-glass h-8 px-3.5 text-xs">
+            Cancel
+          </button>
+        </StatusPill>
       )}
 
-      {video === "incoming" && (
+      {video === "incoming" && peerId && (
         <ConnectionPrompt
-          title="Start video call?"
-          subtitle="The stranger wants to turn on video."
-          acceptLabel="Accept"
-          declineLabel="Decline"
+          title="Turn on video?"
+          subtitle="They'd like to see you. Your camera and mic stay off until you accept."
+          color={dotColor(peerId)}
+          icon={<IconVideo />}
+          acceptLabel="Start video"
+          declineLabel="Not now"
           onAccept={acceptVideo}
           onDecline={declineVideo}
         />
       )}
 
-      {video === "active" && (
+      {video === "active" && peerId && (
         <VideoPanel
           localStream={localStream}
           remoteStream={remoteStream}
+          color={dotColor(peerId)}
+          chatOpen={chatOpen}
+          unread={unread}
+          onToggleChat={() => setChatOpen(!chatOpen)}
           onEnd={endVideo}
         />
       )}
