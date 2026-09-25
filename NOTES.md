@@ -152,6 +152,8 @@ I reviewed all four API routes (`join`, `poll`, `signal`, `leave`) plus the clie
 - `Referrer-Policy: strict-origin-when-cross-origin` (origin-only, so Mapbox URL-restricted tokens still work), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy: same-origin`, HSTS. Removed `X-Powered-By`.
 - Verified: headers present, the map renders with tiles, and there are no CSP violations in the console.
 
+**#8: Mapbox token.** Removed the hard-coded dummy fallback token in `WorldMap.tsx`. It made `TOKEN` always truthy, so the component's own "Set `NEXT_PUBLIC_MAPBOX_TOKEN`" message could never show, and a missing token meant a silently blank map. The real token is public by design (`pk.`), but it should be **URL-restricted to the Vercel domain** in the Mapbox dashboard, so others can't use it on their own sites against our quota. That's a dashboard setting, not code.
+
 ## Phase 4 — Make it better
 
 _TODO_
