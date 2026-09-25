@@ -51,6 +51,14 @@
   - **Crash or no beacon:** `PeerSession` now reports when the data channel is closed by the other side (`onChannelClose`), not by us. On that, or on a `failed` connection, the client sends `end` itself (which frees its `busy` flag) and tears down.
 - **Files:** `lib/api.ts`, `app/api/leave/route.ts`, `lib/webrtc.ts`, `app/page.tsx`
 
+### 7. A user who went briefly offline became invisible for good
+
+- **Symptom:** if a tab stops polling for more than 15s (laptop sleep, Wi-Fi drop, background tab throttled by the browser, page restored via Back/Forward), its dot disappears for others and never comes back, even though the tab is open and still sees everyone else.
+- **How I reproduced it:** two windows, set one to **Offline** in DevTools → Network for ~20s, then back online. Its dot never came back in the other window, and its `Presence` row was gone in Neon.
+- **Cause:** `/api/poll` removes stale rows, which is correct. But its heartbeat is `updateMany where id`, which only updates an existing row and never creates one. Once the row was deleted, polling kept working but the user never reappeared.
+- **Fix:** poll now returns `present: false` when the heartbeat updated no row. The client then calls `/api/join` again with its saved location (which also picks a fresh 1–3 km offset).
+- **Files:** `app/api/poll/route.ts`, `lib/types.ts`, `app/page.tsx`
+
 ## Phase 2 — Make it good
 
 _TODO_

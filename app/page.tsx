@@ -33,6 +33,8 @@ export default function Home() {
   const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(
     null,
   );
+  // Same location, readable from the poll loop for re-joining.
+  const locationRef = useRef<{ lat: number; lng: number } | null>(null);
 
   const [conn, _setConn] = useState<Conn>({ kind: "idle" });
   const connRef = useRef<Conn>(conn);
@@ -281,6 +283,12 @@ export default function Home() {
       try {
         const data = await poll(sessionId);
         if (!active) return;
+        // We were reaped as stale while this tab stayed open. Re-join so
+        // others can see our dot again.
+        if (!data.present && locationRef.current) {
+          const { lat, lng } = locationRef.current;
+          await join(sessionId, lat, lng);
+        }
         setPeers(data.peers);
         for (const s of data.signals) processSignalRef.current(s);
       } catch {}
@@ -310,6 +318,7 @@ export default function Home() {
 
   async function handleReady(lat: number, lng: number) {
     setMyLocation({ lat, lng });
+    locationRef.current = { lat, lng };
     await join(sessionId, lat, lng);
     setPhase("live");
   }
