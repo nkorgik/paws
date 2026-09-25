@@ -22,6 +22,15 @@ export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+// Two numbers in [0, 1) derived from the session token, used as the privacy
+// offset's distance and bearing so a session's dot stays put across
+// re-joins. Domain-separated from `hashToken`, so the stored hash can't be
+// used to recompute anyone's offset.
+export function offsetSeed(token: string): [number, number] {
+  const h = createHash("sha256").update(`privacy-offset:${token}`).digest();
+  return [h.readUInt32BE(0) / 2 ** 32, h.readUInt32BE(4) / 2 ** 32];
+}
+
 // Token from an `Authorization: Bearer <token>` header, if well-formed.
 export function bearerToken(request: Request): string | null {
   const header = request.headers.get("authorization") ?? "";

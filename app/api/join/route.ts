@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { isPrismaError, prisma } from "@/lib/prisma";
 import { applyPrivacyOffset, isValidLatLng } from "@/lib/geo";
-import { hashToken, isValidId, isValidToken } from "@/lib/auth";
+import { hashToken, isValidId, isValidToken, offsetSeed } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +10,9 @@ export const dynamic = "force-dynamic";
 // Registers (or re-registers after being reaped) the tab's session: `id` is
 // the public dot id, `token` the tab's secret. Only the token's hash is
 // stored, and an existing id can only be updated by the token that created
-// it. Applies a 1–3 km privacy offset; raw coordinates are never stored.
+// it. Applies a 1–3 km privacy offset that's fixed per session (derived from
+// the token), so re-joining doesn't reveal a new sample of the real location.
+// Raw coordinates are never stored.
 export async function POST(request: NextRequest) {
   let body: unknown;
   try {
@@ -32,7 +34,11 @@ export async function POST(request: NextRequest) {
   }
 
   const tokenHash = hashToken(token);
-  const offset = applyPrivacyOffset(lat as number, lng as number);
+  const offset = applyPrivacyOffset(
+    lat as number,
+    lng as number,
+    ...offsetSeed(token),
+  );
 
   const existing = await prisma.presence.findUnique({
     where: { id },

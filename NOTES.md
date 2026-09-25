@@ -117,6 +117,10 @@ I reviewed all four API routes (`join`, `poll`, `signal`, `leave`) plus the clie
 - Client: if an accept is rejected (the request was cancelled or expired first), the user sees "That request is no longer available" instead of hanging on "Connecting…".
 - Verified with a script: accept/offer/ice/end/decline to strangers → 409 and nothing is marked busy. Full request → accept → offer/answer → end → reconnect flow works. Leave frees and notifies only real peers. Also checked in two browser tabs that the real client's signals are all accepted.
 
+**#3: Stable privacy offset.** The offset's distance and direction now come from a hash of the session token, instead of a fresh `Math.random()` on every join. Within a session every re-join lands on the exact same spot, so repeated samples reveal nothing. A new session (new tab) still gets a new, independent offset, as the requirements ask. The seed is domain-separated from the stored `tokenHash` (`sha256("privacy-offset:" + token)`), so a database leak can't be used to recompute offsets.
+- Verified: 5 re-joins produced the identical dot, the distance from the real location was within 1–3 km, and a new session was placed elsewhere.
+- Residual: someone who reloads many times from the same place creates many independent dots. An observer can't tell those sessions belong to the same person, so I accepted this as inherent to "a different position each session".
+
 ## Phase 4 — Make it better
 
 _TODO_
