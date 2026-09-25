@@ -21,6 +21,13 @@
 - **Fix:** swapped the order: `setRemoteDescription()` first, then `flushPendingCandidates()`.
 - **File:** `lib/webrtc.ts`
 
+### 3. Chat messages never reached the other user
+
+- **Symptom:** the connection is established, but sent messages only appear for the sender.
+- **Cause:** chat goes peer-to-peer over the data channel as JSON with a `t` field for the message type. The sender (`sendChat`) sent `t: "msg"`, but the receiver only handles `t: "chat"` (and `"ctrl"` for video controls), so every chat message was silently dropped on arrival. The sender still saw their own message because it is added to their chat locally.
+- **Fix:** the sender now uses `t: "chat"`, matching the receiver.
+- **File:** `lib/webrtc.ts`
+
 ## Phase 2 — Make it good
 
 _TODO_
