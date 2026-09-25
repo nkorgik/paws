@@ -2,6 +2,12 @@ import type { NextRequest } from "next/server";
 import { isPrismaError, prisma } from "@/lib/prisma";
 import { applyPrivacyOffset, isValidLatLng } from "@/lib/geo";
 import { hashToken, isValidId, isValidToken, offsetSeed } from "@/lib/auth";
+import {
+  LIMITS,
+  clientIpKey,
+  rateLimited,
+  tooManyRequests,
+} from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +20,11 @@ export const dynamic = "force-dynamic";
 // the token), so re-joining doesn't reveal a new sample of the real location.
 // Raw coordinates are never stored.
 export async function POST(request: NextRequest) {
+  const ipKey = clientIpKey(request);
+  if (await rateLimited(`join:${ipKey}`, LIMITS.joinPerIp)) {
+    return tooManyRequests();
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -54,11 +65,15 @@ export async function POST(request: NextRequest) {
       data: { lat: offset.lat, lng: offset.lng, lastSeen: new Date() },
     });
   } else {
+    // Cap live sessions per IP so one client can't flood the map with dots.
+    const live = await prisma.presence.count({ where: { ipKey } });
+    if (live >= LIMITS.livePerIp) return tooManyRequests();
     try {
       await prisma.presence.create({
         data: {
           id,
           tokenHash,
+          ipKey,
           lat: offset.lat,
           lng: offset.lng,
           busy: false,

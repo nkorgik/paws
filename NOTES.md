@@ -121,6 +121,23 @@ I reviewed all four API routes (`join`, `poll`, `signal`, `leave`) plus the clie
 - Verified: 5 re-joins produced the identical dot, the distance from the real location was within 1–3 km, and a new session was placed elsewhere.
 - Residual: someone who reloads many times from the same place creates many independent dots. An observer can't tell those sessions belong to the same person, so I accepted this as inherent to "a different position each session".
 
+**#4: Rate limits and caps.** Counters live in a small `RateLimit` table: one atomic `INSERT … ON CONFLICT` per request, fixed windows, using the database clock. Postgres is the only state shared across serverless instances, so an in-memory limiter wouldn't work on Vercel.
+
+| Limit | Value | Stops |
+|---|---|---|
+| Live sessions per IP | 10 | flooding the map with fake dots |
+| Joins per IP | 20 / min | churning sessions to get around the cap above |
+| Polls per IP | 100 / 10s (~15 tabs) | hammering the most expensive endpoint |
+| Signals per session | 60 / 10s | spam; a real handshake bursts ~20–30 |
+| Pending signals per recipient | 100 | filling one user's mailbox or the database |
+| Signal payload | 16 KB (was 64 KB) | oversized rows; real SDP is a few KB |
+
+- IPs are never stored. Rate limits and the per-IP session cap use an HMAC of the IP (keyed with `RATE_LIMIT_SECRET`, falling back to `DATABASE_URL`), so the stored key can't be reversed by hashing every IPv4 address. The key on a presence row is deleted with the session.
+- The client IP comes from `x-real-ip` / `x-forwarded-for`, which Vercel sets itself (and overwrites if a client supplies them). Locally everyone shares one bucket.
+- Trade-offs: a big office or school behind one NAT IP shares the 10-session and poll budgets, and I'd tune these with real traffic. Each check adds a small query per request.
+- Also recommended for production, no code needed: a Vercel Firewall rate-limit rule on `/api/*` as a first line of defense before the function even runs.
+- Verified: the 11th live session → 429, re-joins of existing sessions still work, 17 KB payload → 400, bursts over the signal/poll limits → 429, 101st pending signal → 429. The earlier auth, pairing and offset suites still pass.
+
 ## Phase 4 — Make it better
 
 _TODO_

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import type { SignalType } from "@/lib/types";
 import { bearerToken, findSession, isValidId } from "@/lib/auth";
 import { unpair } from "@/lib/pairing";
+import { LIMITS, rateLimited, tooManyRequests } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,8 +18,6 @@ const VALID_TYPES: SignalType[] = [
   "end",
 ];
 
-const MAX_PAYLOAD = 64 * 1024; // SDP/ICE are small; cap to be safe.
-
 // POST /api/signal (Authorization: Bearer <token>) — body { toId, type, payload? }
 // Drops one message into the recipient's mailbox. The sender is derived from
 // the token, never taken from the body. Tracks who is paired with whom
@@ -31,6 +30,9 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
   const fromId = me.id;
+  if (await rateLimited(`signal:${fromId}`, LIMITS.signalPerSession)) {
+    return tooManyRequests();
+  }
 
   let body: unknown;
   try {
@@ -50,7 +52,7 @@ export async function POST(request: NextRequest) {
   if (
     payload !== undefined &&
     payload !== null &&
-    (typeof payload !== "string" || payload.length > MAX_PAYLOAD)
+    (typeof payload !== "string" || payload.length > LIMITS.payloadBytes)
   ) {
     return Response.json({ error: "invalid payload" }, { status: 400 });
   }
@@ -115,6 +117,10 @@ export async function POST(request: NextRequest) {
       if (!me.busy || me.peerId !== toId) return conflict();
     }
   }
+
+  // Cap the recipient's mailbox so nobody can fill it (or the database).
+  const pending = await prisma.signal.count({ where: { toId } });
+  if (pending >= LIMITS.mailbox) return tooManyRequests();
 
   await deliver(fromId, toId, signalType, payloadStr);
   return Response.json({ ok: true });

@@ -3,6 +3,13 @@ import { isPrismaError, prisma } from "@/lib/prisma";
 import { STALE_MS, SIGNAL_TTL_MS } from "@/lib/presence";
 import type { PollResponse } from "@/lib/types";
 import { bearerToken, hashToken } from "@/lib/auth";
+import {
+  LIMITS,
+  clientIpKey,
+  rateLimited,
+  sweepRateLimits,
+  tooManyRequests,
+} from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +22,9 @@ export async function GET(request: NextRequest) {
   const token = bearerToken(request);
   if (!token) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+  if (await rateLimited(`poll:${clientIpKey(request)}`, LIMITS.pollPerIp)) {
+    return tooManyRequests();
   }
 
   const now = Date.now();
@@ -41,6 +51,8 @@ export async function GET(request: NextRequest) {
   // no atomicity needed, and avoids transactions over a PgBouncer pooler).
   await prisma.presence.deleteMany({ where: { lastSeen: { lt: staleCutoff } } });
   await prisma.signal.deleteMany({ where: { createdAt: { lt: signalCutoff } } });
+  // Expired rate-limit counters don't need sweeping on every poll.
+  if (Math.random() < 0.1) await sweepRateLimits();
 
   // 3) Online peers, excluding self.
   const peers = await prisma.presence.findMany({
