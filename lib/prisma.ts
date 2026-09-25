@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 // Prisma 7 connects through a driver adapter. We pass the (pooled) Postgres
@@ -30,4 +30,10 @@ export const prisma = globalForPrisma.prisma ?? createClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
+}
+
+// Known Prisma error codes we branch on: P2002 = unique constraint violated,
+// P2025 = record to update/delete not found.
+export function isPrismaError(e: unknown, code: "P2002" | "P2025"): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === code;
 }

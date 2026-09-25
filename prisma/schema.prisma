@@ -12,13 +12,32 @@ datasource db {
 }
 
 model Presence {
-  id       String   @id // client-generated session uuid
-  lat      Float // ALREADY privacy-offset coords (raw is never stored)
-  lng      Float
-  busy     Boolean  @default(false) // true while in an active connection
-  lastSeen DateTime
+  id        String   @id // client-generated session uuid (public)
+  tokenHash String   @unique // sha256 of the tab's secret session token
+  lat       Float // ALREADY privacy-offset coords (raw is never stored)
+  lng       Float
+  busy      Boolean  @default(false) // true while in an active connection
+  // Who this user has requested (busy=false) or is connected to (busy=true).
+  // Lets the server check every signal against a real request/connection.
+  peerId    String?
+  // Keyed hash of the client IP (never the IP itself), used to cap live
+  // sessions per IP. Deleted with the row when the session ends.
+  ipKey     String?
+  lastSeen  DateTime
 
   @@index([lastSeen])
+  @@index([peerId])
+  @@index([ipKey])
+}
+
+model RateLimit {
+  // Fixed-window request counters, e.g. "poll:<ipKey>" or "signal:<id>".
+  // Rows are short-lived and swept by /api/poll.
+  key     String   @id
+  count   Int
+  resetAt DateTime
+
+  @@index([resetAt])
 }
 
 model Signal {

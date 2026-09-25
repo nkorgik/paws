@@ -1,9 +1,23 @@
+import { normalizePayload } from "@/lib/payload";
+
 export type DescType = "offer" | "answer" | "ice";
 export type PeerControl =
   | "video-request"
   | "video-accept"
   | "video-decline"
   | "video-end";
+
+const CONTROLS: readonly string[] = [
+  "video-request",
+  "video-accept",
+  "video-decline",
+  "video-end",
+];
+
+// Chat is peer-to-peer, so the server can't enforce limits: each side caps
+// what it sends and ignores anything bigger it receives.
+export const MAX_CHAT_LENGTH = 2000;
+const MAX_FRAME_LENGTH = MAX_CHAT_LENGTH * 2 + 100; // JSON escaping headroom
 
 interface PeerCallbacks {
   onSignal: (type: DescType, payload: string) => void;
@@ -12,6 +26,7 @@ interface PeerCallbacks {
   onRemoteStream: (stream: MediaStream | null) => void;
   onConnectionState: (state: RTCPeerConnectionState) => void;
   onChannelOpen: () => void;
+  onChannelClose: () => void;
 }
 
 const ICE_CONFIG: RTCConfiguration = {
@@ -73,12 +88,21 @@ export class PeerSession {
 
   private wireDataChannel(dc: RTCDataChannel) {
     dc.onopen = () => this.cb.onChannelOpen();
+    // Only report closes we didn't cause ourselves (the peer left / crashed).
+    dc.onclose = () => {
+      if (!this.closed) this.cb.onChannelClose();
+    };
     dc.onmessage = (e) => {
+      if (typeof e.data !== "string" || e.data.length > MAX_FRAME_LENGTH) return;
       try {
-        const msg = JSON.parse(e.data as string);
-        if (msg.t === "chat" && typeof msg.text === "string") {
+        const msg = JSON.parse(e.data);
+        if (
+          msg.t === "chat" &&
+          typeof msg.text === "string" &&
+          msg.text.length <= MAX_CHAT_LENGTH
+        ) {
           this.cb.onChat(msg.text);
-        } else if (msg.t === "ctrl" && typeof msg.ctrl === "string") {
+        } else if (msg.t === "ctrl" && CONTROLS.includes(msg.ctrl)) {
           this.cb.onControl(msg.ctrl as PeerControl);
         }
       } catch {}
@@ -87,7 +111,10 @@ export class PeerSession {
 
   async handleSignal(type: DescType, payload: string) {
     if (this.closed) return;
-    const data = JSON.parse(payload);
+    // Never hand malformed data to RTCPeerConnection.
+    const clean = normalizePayload(type, payload);
+    if (!clean) return;
+    const data = JSON.parse(clean);
 
     if (type === "ice") {
       if (!this.pc.remoteDescription) {
@@ -107,8 +134,8 @@ export class PeerSession {
     this.ignoreOffer = !this.polite && offerCollision;
     if (this.ignoreOffer) return;
 
-    await this.flushPendingCandidates();
     await this.pc.setRemoteDescription(desc);
+    await this.flushPendingCandidates(); 
     if (desc.type === "offer") {
       await this.pc.setLocalDescription();
       if (this.pc.localDescription) {
@@ -129,7 +156,7 @@ export class PeerSession {
   }
 
   sendChat(text: string) {
-    this.safeSend({ t: "msg", text });
+    this.safeSend({ t: "chat", text: text.slice(0, MAX_CHAT_LENGTH) });
   }
 
   sendControl(ctrl: PeerControl) {
