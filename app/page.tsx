@@ -54,6 +54,19 @@ export default function Home() {
   const setVideo = (v: VideoState) => {
     videoRef.current = v;
     _setVideo(v);
+    // Each call starts immersive (chat tucked away); ending one resets it.
+    if (v === "active" || v === "none") setChatOpen(false);
+  };
+
+  // During video the chat is an overlay the user can open; count messages
+  // that arrive while it's hidden for the badge on the chat button.
+  const [chatOpen, _setChatOpen] = useState(false);
+  const chatOpenRef = useRef(false);
+  const [unread, setUnread] = useState(0);
+  const setChatOpen = (open: boolean) => {
+    chatOpenRef.current = open;
+    _setChatOpen(open);
+    setUnread(0);
   };
 
   const peerRef = useRef<PeerSession | null>(null);
@@ -67,6 +80,9 @@ export default function Home() {
 
   function addMessage(mine: boolean, text: string) {
     setMessages((prev) => [...prev, { id: msgId.current++, mine, text }]);
+    if (!mine && videoRef.current === "active" && !chatOpenRef.current) {
+      setUnread((n) => n + 1);
+    }
   }
 
   function teardown(message?: string) {
@@ -363,7 +379,7 @@ export default function Home() {
         onPeerClick={requestConnection}
         canConnect={conn.kind === "idle"}
       />
-      <TopBar online={peers.length + 1} />
+      {video !== "active" && <TopBar online={peers.length + 1} />}
 
       {conn.kind === "idle" && !notice && (
         <StatusPill position="bottom" quiet>
@@ -413,6 +429,8 @@ export default function Home() {
           videoBusy={video !== "none"}
           color={dotColor(conn.peerId)}
           distance={distanceTo(conn.peerId)}
+          hidden={video === "active" && !chatOpen}
+          onClose={video === "active" ? () => setChatOpen(false) : undefined}
           onSend={(text) => {
             peerRef.current?.sendChat(text);
             addMessage(true, text);
@@ -445,10 +463,14 @@ export default function Home() {
         />
       )}
 
-      {video === "active" && (
+      {video === "active" && peerId && (
         <VideoPanel
           localStream={localStream}
           remoteStream={remoteStream}
+          color={dotColor(peerId)}
+          chatOpen={chatOpen}
+          unread={unread}
+          onToggleChat={() => setChatOpen(!chatOpen)}
           onEnd={endVideo}
         />
       )}

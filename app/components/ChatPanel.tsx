@@ -2,7 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MAX_CHAT_LENGTH } from "@/lib/webrtc";
-import { IconLock, IconPhoneEnd, IconSend, IconVideo, Spinner } from "./icons";
+import {
+  IconLock,
+  IconPhoneEnd,
+  IconSend,
+  IconVideo,
+  IconX,
+  Spinner,
+} from "./icons";
 
 export interface ChatMessage {
   id: number;
@@ -19,6 +26,7 @@ export default function ChatPanel({
   color,
   distance,
   hidden = false,
+  onClose,
   onSend,
   onStartVideo,
   onEnd,
@@ -31,6 +39,8 @@ export default function ChatPanel({
   distance?: string;
   /** Kept mounted (draft + scroll survive) but out of view, e.g. during video. */
   hidden?: boolean;
+  /** When set (during video), a close button replaces the video button. */
+  onClose?: () => void;
   onSend: (text: string) => void;
   onStartVideo: () => void;
   onEnd: () => void;
@@ -85,15 +95,26 @@ export default function ChatPanel({
             </span>
           </p>
         </div>
-        <button
-          onClick={onStartVideo}
-          disabled={!connected || videoBusy}
-          aria-label="Start video call"
-          title="Start video call"
-          className="btn btn-glass size-10"
-        >
-          <IconVideo />
-        </button>
+        {onClose ? (
+          <button
+            onClick={onClose}
+            aria-label="Hide chat"
+            title="Back to video"
+            className="btn btn-glass size-10"
+          >
+            <IconX />
+          </button>
+        ) : (
+          <button
+            onClick={onStartVideo}
+            disabled={!connected || videoBusy}
+            aria-label="Start video call"
+            title="Start video call"
+            className="btn btn-glass size-10"
+          >
+            <IconVideo />
+          </button>
+        )}
         <button
           onClick={onEnd}
           aria-label="End chat"
