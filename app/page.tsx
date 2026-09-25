@@ -6,6 +6,7 @@ import WorldMap from "./components/WorldMap";
 import ConnectionPrompt from "./components/ConnectionPrompt";
 import ChatPanel, { type ChatMessage } from "./components/ChatPanel";
 import VideoPanel from "./components/VideoPanel";
+import TopBar from "./components/TopBar";
 import { join, leave, poll, sendSignal } from "@/lib/api";
 import { createSession } from "@/lib/session";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
@@ -277,8 +278,10 @@ export default function Home() {
     processSignalRef.current = processSignal;
   });
 
+  // Poll from the moment the page opens: before joining, the globe behind
+  // the entry card already shows who's online (the server returns peers but
+  // no mailbox for a session that hasn't joined yet).
   useEffect(() => {
-    if (phase !== "live") return;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -303,7 +306,7 @@ export default function Home() {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [phase, session]);
+  }, [session]);
 
   useEffect(() => {
     if (phase !== "live") return;
@@ -323,11 +326,23 @@ export default function Home() {
     setPhase("live");
   }
 
-  if (phase === "gate") {
-    return <EntryGate onReady={handleReady} />;
-  }
-
   const inChat = conn.kind === "connecting" || conn.kind === "connected";
+
+  // The map is always mounted: the entry card floats over the spinning globe,
+  // and entering flies the same camera down to you.
+  if (phase === "gate") {
+    return (
+      <main className="fixed inset-0 overflow-hidden">
+        <WorldMap
+          peers={peers}
+          me={null}
+          onPeerClick={() => {}}
+          canConnect={false}
+        />
+        <EntryGate online={peers.length} onReady={handleReady} />
+      </main>
+    );
+  }
 
   return (
     <main className="fixed inset-0 overflow-hidden">
@@ -337,6 +352,7 @@ export default function Home() {
         onPeerClick={requestConnection}
         canConnect={conn.kind === "idle"}
       />
+      <TopBar online={peers.length + 1} />
 
       {notice && (
         <div className="absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">

@@ -5,10 +5,14 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import type { Map as MapboxMap, Marker } from "mapbox-gl";
 import type { PeerDot } from "@/lib/types";
 import { dotColor } from "@/lib/colors";
+import { IconLocate } from "./icons";
 
 // No fallback token: without one we show the "set NEXT_PUBLIC_MAPBOX_TOKEN"
 // message below instead of silently loading a blank map.
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+
+const SECONDS_PER_REVOLUTION = 180; // idle globe spin before you join
+const LIVE_ZOOM = 4.2;
 
 export default function WorldMap({
   peers,
@@ -36,7 +40,7 @@ export default function WorldMap({
     canConnectRef.current = canConnect;
   });
 
-  // Initialise the map once.
+  // Initialise the map once: a globe with a faint emerald atmosphere.
   useEffect(() => {
     if (!TOKEN || !containerRef.current) return;
     let cancelled = false;
@@ -46,13 +50,24 @@ export default function WorldMap({
       const mapboxgl = (await import("mapbox-gl")).default;
       if (cancelled || !containerRef.current) return;
       mapboxgl.accessToken = TOKEN;
+      const narrow = window.innerWidth < 640;
       const map = new mapboxgl.Map({
         container: containerRef.current,
         style: "mapbox://styles/mapbox/dark-v11",
-        // Open centered on the user if we know where they are, else world view.
-        center: me ? [me.lng, me.lat] : [0, 20],
-        zoom: me ? 4 : 1.4,
-        attributionControl: true,
+        projection: "globe",
+        center: [-30, 25],
+        zoom: narrow ? 0.9 : 1.6,
+        attributionControl: false,
+      });
+      map.addControl(new mapboxgl.AttributionControl({ compact: true }));
+      map.on("style.load", () => {
+        map.setFog({
+          color: "rgb(12, 14, 16)",
+          "high-color": "rgb(16, 58, 46)",
+          "horizon-blend": 0.06,
+          "space-color": "rgb(9, 9, 11)",
+          "star-intensity": 0.12,
+        });
       });
       map.on("load", () => {
         if (!cancelled) setReady(true);
@@ -70,11 +85,46 @@ export default function WorldMap({
       mapRef.current = null;
       setReady(false);
     };
-    // `me` is only read for the initial center; we don't want to re-init on change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Show / move the user's own "you are here" pin.
+  // Before you join, slowly spin the globe. Stops for good once we know
+  // where you are (the cleanup runs before the fly-to below).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || me) return;
+    let spinning = true;
+
+    const spin = () => {
+      if (!spinning) return;
+      const center = map.getCenter();
+      center.lng -= 360 / SECONDS_PER_REVOLUTION;
+      map.easeTo({ center, duration: 1000, easing: (n) => n });
+    };
+    const pause = () => (spinning = false);
+    const resume = () => {
+      spinning = true;
+      spin();
+    };
+
+    map.on("moveend", spin);
+    map.on("mousedown", pause);
+    map.on("touchstart", pause);
+    map.on("mouseup", resume);
+    map.on("touchend", resume);
+    spin();
+
+    return () => {
+      spinning = false;
+      map.off("moveend", spin);
+      map.off("mousedown", pause);
+      map.off("touchstart", pause);
+      map.off("mouseup", resume);
+      map.off("touchend", resume);
+      map.stop();
+    };
+  }, [ready, me]);
+
+  // Show your own marker and fly the camera down to you when you join.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || !me) return;
@@ -91,6 +141,13 @@ export default function WorldMap({
         meMarkerRef.current = new mapboxgl.Marker({ element: el })
           .setLngLat([me.lng, me.lat])
           .addTo(map);
+        map.flyTo({
+          center: [me.lng, me.lat],
+          zoom: LIVE_ZOOM,
+          duration: 3200,
+          curve: 1.6,
+          essential: true,
+        });
       } else {
         meMarkerRef.current.setLngLat([me.lng, me.lat]);
       }
@@ -152,24 +209,41 @@ export default function WorldMap({
     };
   }, [peers, ready]);
 
+  function recenter() {
+    const map = mapRef.current;
+    if (!map || !me) return;
+    map.flyTo({
+      center: [me.lng, me.lat],
+      zoom: Math.max(map.getZoom(), LIVE_ZOOM),
+      duration: 1400,
+      essential: true,
+    });
+  }
+
   return (
     <div className="absolute inset-0">
-      <div ref={containerRef} className="h-full w-full bg-zinc-900" />
+      <div ref={containerRef} className="h-full w-full bg-zinc-950" />
 
       {!TOKEN && (
         <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
-          <p className="max-w-md rounded-lg bg-zinc-800 p-4 text-sm text-zinc-200">
+          <p className="glass max-w-md rounded-2xl p-4 text-sm text-zinc-200">
             Set{" "}
-            <code className="text-emerald-400">NEXT_PUBLIC_MAPBOX_TOKEN</code> in{" "}
+            <code className="text-emerald-300">NEXT_PUBLIC_MAPBOX_TOKEN</code> in{" "}
             <code>.env</code> to load the map.
           </p>
         </div>
       )}
 
-      {/* Online count */}
-      <div className="absolute bottom-4 left-4 rounded-full bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur">
-        {peers.length} online
-      </div>
+      {me && ready && (
+        <button
+          onClick={recenter}
+          aria-label="Center on me"
+          title="Center on me"
+          className="glass btn absolute right-4 bottom-[calc(max(1rem,env(safe-area-inset-bottom))+2.75rem)] z-10 size-11 animate-glass-in text-zinc-200 hover:text-white"
+        >
+          <IconLocate />
+        </button>
+      )}
     </div>
   );
 }
