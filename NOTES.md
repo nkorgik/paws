@@ -154,6 +154,8 @@ I reviewed all four API routes (`join`, `poll`, `signal`, `leave`) plus the clie
 
 **#8: Mapbox token.** Removed the hard-coded dummy fallback token in `WorldMap.tsx`. It made `TOKEN` always truthy, so the component's own "Set `NEXT_PUBLIC_MAPBOX_TOKEN`" message could never show, and a missing token meant a silently blank map. The real token is public by design (`pk.`), but it should be **URL-restricted to the Vercel domain** in the Mapbox dashboard, so others can't use it on their own sites against our quota. That's a dashboard setting, not code.
 
+**#9: Leftover dev config.** Removed `allowedDevOrigins` for someone's personal ngrok host, which let that external origin load dev-server resources (HMR, etc.) whenever `next dev` ran.
+
 ## Phase 4 — Make it better
 
 _TODO_
