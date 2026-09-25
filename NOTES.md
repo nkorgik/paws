@@ -28,6 +28,13 @@
 - **Fix:** the sender now uses `t: "chat"`, matching the receiver.
 - **File:** `lib/webrtc.ts`
 
+### 4. No way to end a video call ("End video" button missing)
+
+- **Symptom:** during a video call there's no button to end it.
+- **Cause:** the video panel is a full-screen flex column: the video area (`flex-1`) and a bottom bar holding "End video". Flex items don't shrink below their content size by default. The `<video>` is full width and keeps its aspect ratio, so on a wide window it's taller than the screen. It pushed the bottom bar below the viewport, where `overflow-hidden` on `main` cut it off.
+- **Fix:** added `min-h-0` to the video area so it shrinks to fit the remaining space and the bar stays visible.
+- **File:** `app/components/VideoPanel.tsx`
+
 ## Phase 2 — Make it good
 
 _TODO_
