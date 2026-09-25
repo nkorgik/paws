@@ -156,6 +156,10 @@ I reviewed all four API routes (`join`, `poll`, `signal`, `leave`) plus the clie
 
 **#9: Leftover dev config.** Removed `allowedDevOrigins` for someone's personal ngrok host, which let that external origin load dev-server resources (HMR, etc.) whenever `next dev` ran.
 
+**#10: Chat message limits.** Chat goes peer-to-peer, so the server can't enforce anything. Each client now caps what it sends at 2000 characters (the input has `maxLength`), and it ignores oversized frames or messages it receives, plus any control message that isn't one of the four known video commands. Before, a modified client could send megabyte-sized messages to freeze the other side's UI.
+
+**#11: IP visible to the peer (not fixed).** After you accept a connection, WebRTC's ICE candidates reveal your public IP to that peer. This is inherent to peer-to-peer. It only happens after consent (handshake data flows only after accept, now enforced by #2), and the old way to read anyone's candidates (#1) is closed. Fully hiding it would need a TURN server with `iceTransportPolicy: "relay"`, which means extra infrastructure and cost, and the requirements rule out external services. I'd offer it as an opt-in "hide my IP" mode with more time.
+
 ## Phase 4 — Make it better
 
 _TODO_

@@ -7,6 +7,18 @@ export type PeerControl =
   | "video-decline"
   | "video-end";
 
+const CONTROLS: readonly string[] = [
+  "video-request",
+  "video-accept",
+  "video-decline",
+  "video-end",
+];
+
+// Chat is peer-to-peer, so the server can't enforce limits: each side caps
+// what it sends and ignores anything bigger it receives.
+export const MAX_CHAT_LENGTH = 2000;
+const MAX_FRAME_LENGTH = MAX_CHAT_LENGTH * 2 + 100; // JSON escaping headroom
+
 interface PeerCallbacks {
   onSignal: (type: DescType, payload: string) => void;
   onChat: (text: string) => void;
@@ -81,11 +93,16 @@ export class PeerSession {
       if (!this.closed) this.cb.onChannelClose();
     };
     dc.onmessage = (e) => {
+      if (typeof e.data !== "string" || e.data.length > MAX_FRAME_LENGTH) return;
       try {
-        const msg = JSON.parse(e.data as string);
-        if (msg.t === "chat" && typeof msg.text === "string") {
+        const msg = JSON.parse(e.data);
+        if (
+          msg.t === "chat" &&
+          typeof msg.text === "string" &&
+          msg.text.length <= MAX_CHAT_LENGTH
+        ) {
           this.cb.onChat(msg.text);
-        } else if (msg.t === "ctrl" && typeof msg.ctrl === "string") {
+        } else if (msg.t === "ctrl" && CONTROLS.includes(msg.ctrl)) {
           this.cb.onControl(msg.ctrl as PeerControl);
         }
       } catch {}
@@ -139,7 +156,7 @@ export class PeerSession {
   }
 
   sendChat(text: string) {
-    this.safeSend({ t: "chat", text });
+    this.safeSend({ t: "chat", text: text.slice(0, MAX_CHAT_LENGTH) });
   }
 
   sendControl(ctrl: PeerControl) {
