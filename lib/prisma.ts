@@ -32,8 +32,7 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
-// Known Prisma error codes we branch on: P2002 = unique constraint violated,
-// P2025 = record to update/delete not found.
-export function isPrismaError(e: unknown, code: "P2002" | "P2025"): boolean {
+// Known Prisma error codes we branch on: P2002 = unique constraint violated.
+export function isPrismaError(e: unknown, code: "P2002"): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === code;
 }
