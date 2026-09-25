@@ -144,6 +144,14 @@ I reviewed all four API routes (`join`, `poll`, `signal`, `leave`) plus the clie
 - The client runs the same check before passing anything to `RTCPeerConnection`. `handleSignal` errors are now caught and logged, instead of becoming unhandled promise rejections.
 - Verified: non-JSON, wrong-type and missing-field payloads → 400, extra fields stripped, and the full connection flow still passes (34/34).
 
+**#6: Security headers** (`next.config.ts`, on all routes):
+- **CSP:** `frame-ancestors 'none'` (clickjacking; the app asks for camera, mic and location, so being framed on another site is a real risk), `connect-src` limited to our own API and Mapbox, plus `object-src 'none'`, `base-uri 'self'` and `form-action 'self'`. Mapbox GL needs `blob:` workers and its tile/API/telemetry hosts. WebRTC isn't governed by CSP.
+  - Trade-off: `script-src` allows `'unsafe-inline'` (Next's "without nonces" setup). Nonces would force every page to render dynamically. XSS is already mitigated by React escaping, and nothing renders user HTML.
+  - I left out `upgrade-insecure-requests`: production is HTTPS-only anyway, and it can break `npm start` over plain `http://localhost`.
+- **Permissions-Policy:** camera, mic and geolocation are allowed for this origin only (never embedded third parties). Everything else we don't use is disabled.
+- `Referrer-Policy: strict-origin-when-cross-origin` (origin-only, so Mapbox URL-restricted tokens still work), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy: same-origin`, HSTS. Removed `X-Powered-By`.
+- Verified: headers present, the map renders with tiles, and there are no CSP violations in the console.
+
 ## Phase 4 — Make it better
 
 _TODO_
