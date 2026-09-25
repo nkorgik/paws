@@ -73,6 +73,13 @@ export default function Home() {
     if (message) showNotice(message);
   }
 
+  // The direct connection died without an "end" from the peer (tab crashed,
+  // network dropped). Tell the server so both sides are freed, then clean up.
+  function dropConnection(peerId: string) {
+    void sendSignal(sessionId, peerId, "end");
+    teardown("Stranger disconnected.");
+  }
+
   function startPeer(peerId: string, initiator: boolean) {
     const ps = new PeerSession(initiator, {
       onSignal: (type: DescType, payload: string) => {
@@ -82,13 +89,12 @@ export default function Home() {
       onControl: (ctrl) => handleControl(ctrl),
       onRemoteStream: (stream) => setRemoteStream(stream),
       onConnectionState: (state) => {
-        if (state === "failed") {
-          teardown("Connection failed (network).");
-        }
+        if (state === "failed") dropConnection(peerId);
       },
       onChannelOpen: () => {
         setConn({ kind: "connected", peerId });
       },
+      onChannelClose: () => dropConnection(peerId),
     });
     peerRef.current = ps;
   }
@@ -251,13 +257,9 @@ export default function Home() {
       }
       case "end": {
         const c = connRef.current;
-        if (
-          (c.kind === "incoming" ||
-            c.kind === "connecting" ||
-            c.kind === "connected") &&
-          c.peerId === sig.fromId
-        ) {
+        if (c.kind !== "idle" && c.peerId === sig.fromId) {
           if (c.kind === "incoming") setConn({ kind: "idle" });
+          else if (c.kind === "requesting") teardown("Stranger left.");
           else teardown("Stranger disconnected.");
         }
         break;
@@ -294,7 +296,10 @@ export default function Home() {
 
   useEffect(() => {
     if (!sessionId || phase !== "live") return;
-    const onLeave = () => leave(sessionId);
+    const onLeave = () => {
+      const c = connRef.current;
+      leave(sessionId, c.kind === "idle" ? undefined : c.peerId);
+    };
     window.addEventListener("pagehide", onLeave);
     window.addEventListener("beforeunload", onLeave);
     return () => {

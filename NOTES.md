@@ -42,6 +42,15 @@
 - **Fix:** `end` now also sets both users back to `busy: false`.
 - **File:** `app/api/signal/route.ts`
 
+### 6. Closing the tab mid-chat left the other user stuck
+
+- **Symptom:** if one user closes their tab instead of clicking End, the other user stays on a dead chat screen and is still marked `busy`, so nobody can connect to them afterwards. This breaks the requirement "if either user disconnects, the chat ends for both".
+- **Cause:** on tab close the app only called `/api/leave`, which deletes the leaving user's own row. No `end` was sent, so the peer's `busy` flag was never cleared and the peer was never told. The peer only noticed when WebRTC reported `failed` (which can take up to ~30s), and even then it cleaned up locally without telling the server, so it stayed `busy`.
+- **Fix, in two parts:**
+  - **Clean close:** the leave beacon now includes the `peerId` the user was connected to (or requesting). `/api/leave` frees that peer's `busy` flag and puts an `end` in their mailbox, so they see "Stranger disconnected" on their next poll. A pending request that gets cancelled this way now shows "Stranger left."
+  - **Crash or no beacon:** `PeerSession` now reports when the data channel is closed by the other side (`onChannelClose`), not by us. On that, or on a `failed` connection, the client sends `end` itself (which frees its `busy` flag) and tears down.
+- **Files:** `lib/api.ts`, `app/api/leave/route.ts`, `lib/webrtc.ts`, `app/page.tsx`
+
 ## Phase 2 — Make it good
 
 _TODO_
