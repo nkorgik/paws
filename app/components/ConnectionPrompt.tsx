@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 export default function ConnectionPrompt({
   title,
   subtitle,
+  quote,
   color,
   icon,
   acceptLabel,
@@ -16,6 +17,8 @@ export default function ConnectionPrompt({
 }: {
   title: string;
   subtitle?: string;
+  /** Their flare, shown as a quote so you know what they're about. */
+  quote?: string;
   /** The other person's dot color, used for the avatar. */
   color: string;
   icon?: ReactNode;
@@ -45,6 +48,14 @@ export default function ConnectionPrompt({
           {title}
         </h2>
         {subtitle && <p className="mt-1 text-sm text-zinc-400">{subtitle}</p>}
+        {quote && (
+          <blockquote
+            className="mx-auto mt-4 max-w-full rounded-2xl bg-white/[0.06] px-4 py-2.5 text-[15px] text-zinc-100"
+            style={{ boxShadow: `inset 3px 0 0 0 ${color}, inset 0 0 0 1px rgb(255 255 255 / 0.08)` }}
+          >
+            “{quote}”
+          </blockquote>
+        )}
         <div className="mt-6 flex gap-3">
           <button onClick={onDecline} className="btn btn-glass h-11 flex-1 text-sm">
             {declineLabel}

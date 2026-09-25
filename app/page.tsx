@@ -8,10 +8,12 @@ import ChatPanel, { type ChatMessage } from "./components/ChatPanel";
 import VideoPanel from "./components/VideoPanel";
 import TopBar from "./components/TopBar";
 import StatusPill from "./components/StatusPill";
+import Dock from "./components/Dock";
+import FlareComposer from "./components/FlareComposer";
 import { IconVideo } from "./components/icons";
 import { dotColor } from "@/lib/colors";
 import { describeDistance, distanceKm } from "@/lib/geo";
-import { join, leave, poll, sendSignal } from "@/lib/api";
+import { join, leave, poll, sendSignal, setStatus } from "@/lib/api";
 import { createSession } from "@/lib/session";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
 import { POLL_INTERVAL_MS } from "@/lib/presence";
@@ -41,6 +43,35 @@ export default function Home() {
   );
   // Same location, readable from the poll loop for re-joining.
   const locationRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  // Our flare (public note on our dot). Mirrored in a ref so the poll loop
+  // can restore it after a re-join.
+  const [myFlare, setMyFlare] = useState<{ text: string; expiresAt: number } | null>(
+    null,
+  );
+  const myFlareRef = useRef(myFlare);
+  const [flareOpen, setFlareOpen] = useState(false);
+  useEffect(() => {
+    myFlareRef.current = myFlare;
+    if (!myFlare) return;
+    // Drop it locally when it expires (the server already hides it).
+    const t = setTimeout(() => setMyFlare(null), myFlare.expiresAt - Date.now());
+    return () => clearTimeout(t);
+  }, [myFlare]);
+
+  async function postFlare(text: string): Promise<string | null> {
+    const res = await setStatus(session.token, { flare: text });
+    if (!res.ok) return res.error;
+    if (res.flare && res.expiresAt) {
+      setMyFlare({ text: res.flare, expiresAt: Date.parse(res.expiresAt) });
+    }
+    return null;
+  }
+
+  function clearFlare() {
+    setMyFlare(null);
+    void setStatus(session.token, { flare: null });
+  }
 
   const [conn, _setConn] = useState<Conn>({ kind: "idle" });
   const connRef = useRef<Conn>(conn);
@@ -314,6 +345,11 @@ export default function Home() {
         if (!data.present && locationRef.current) {
           const { lat, lng } = locationRef.current;
           await join(session, lat, lng);
+          // A re-join creates a fresh row; put our flare back on it.
+          const f = myFlareRef.current;
+          if (f && f.expiresAt > Date.now()) {
+            void setStatus(session.token, { flare: f.text });
+          }
         }
         setPeers(data.peers);
         for (const s of data.signals) processSignalRef.current(s);
@@ -349,6 +385,8 @@ export default function Home() {
   const inChat = conn.kind === "connecting" || conn.kind === "connected";
   const peerId = conn.kind === "idle" ? null : conn.peerId;
 
+  const flareOf = (id: string) => peers.find((d) => d.id === id)?.flare ?? undefined;
+
   // "about 40 km away" for whoever we're dealing with, from dot positions.
   function distanceTo(id: string): string | undefined {
     const p = peers.find((d) => d.id === id);
@@ -376,19 +414,31 @@ export default function Home() {
       <WorldMap
         peers={peers}
         me={myLocation}
+        myFlare={myFlare?.text ?? null}
         onPeerClick={requestConnection}
         canConnect={conn.kind === "idle"}
       />
       {video !== "active" && <TopBar online={peers.length + 1} />}
 
-      {conn.kind === "idle" && !notice && (
-        <StatusPill position="bottom" quiet>
-          <span className="pr-3">
-            {peers.length === 0
+      {conn.kind === "idle" && (
+        <Dock
+          hint={
+            peers.length === 0
               ? "No one else is here yet. Open Pulse in another window to try it."
-              : "Tap a dot to start a conversation"}
-          </span>
-        </StatusPill>
+              : "Tap a dot to start a conversation"
+          }
+          flare={myFlare}
+          onOpenFlare={() => setFlareOpen(true)}
+        />
+      )}
+
+      {flareOpen && (
+        <FlareComposer
+          current={myFlare?.text ?? null}
+          onPost={postFlare}
+          onClear={clearFlare}
+          onClose={() => setFlareOpen(false)}
+        />
       )}
 
       {notice && (
@@ -414,6 +464,7 @@ export default function Home() {
         <ConnectionPrompt
           title="Someone wants to talk"
           subtitle={`A stranger ${distanceTo(conn.peerId) ?? "somewhere on the map"} wants to connect.`}
+          quote={flareOf(conn.peerId)}
           color={dotColor(conn.peerId)}
           acceptLabel="Accept"
           declineLabel="Not now"
@@ -429,6 +480,7 @@ export default function Home() {
           videoBusy={video !== "none"}
           color={dotColor(conn.peerId)}
           distance={distanceTo(conn.peerId)}
+          flare={flareOf(conn.peerId)}
           hidden={video === "active" && !chatOpen}
           onClose={video === "active" ? () => setChatOpen(false) : undefined}
           onSend={(text) => {

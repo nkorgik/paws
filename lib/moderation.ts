@@ -3,7 +3,7 @@
 // by design. A real product would add a maintained word list or a classifier;
 // this covers the common cases cheaply and runs on every write.
 
-export const FLARE_MAX_LENGTH = 60;
+import { FLARE_MAX_LENGTH } from "@/lib/presence";
 
 export type ModerationResult =
   | { ok: true; text: string }

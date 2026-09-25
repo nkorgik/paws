@@ -25,6 +25,7 @@ export default function ChatPanel({
   videoBusy,
   color,
   distance,
+  flare,
   hidden = false,
   onClose,
   onSend,
@@ -37,6 +38,8 @@ export default function ChatPanel({
   /** The stranger's dot color, used for their avatar. */
   color: string;
   distance?: string;
+  /** Their flare, offered as an icebreaker in the empty state. */
+  flare?: string;
   /** Kept mounted (draft + scroll survive) but out of view, e.g. during video. */
   hidden?: boolean;
   /** When set (during video), a close button replaces the video button. */
@@ -137,6 +140,11 @@ export default function ChatPanel({
             <p className="mt-4 text-sm font-medium text-zinc-200">
               {connected ? "Say hello" : "Opening a private line…"}
             </p>
+            {flare && (
+              <p className="mt-3 rounded-2xl bg-white/[0.06] px-3.5 py-2 text-sm text-zinc-200 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.08)]">
+                <span className="text-zinc-400">Their flare: </span>“{flare}”
+              </p>
+            )}
             <p className="mt-1 text-xs leading-relaxed text-zinc-500">
               Messages go straight to them, peer-to-peer. Nothing touches our
               server and nothing is stored.

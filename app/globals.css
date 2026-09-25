@@ -219,17 +219,69 @@ body {
 }
 
 .pulse-dot:hover,
-.pulse-dot:focus-visible {
+.pulse-dot:focus-visible,
+.pulse-peer:hover .pulse-dot {
   transform: scale(1.4);
   outline: none;
 }
 
+/* Marker wrapper: the dot plus its optional flare bubble. */
+.pulse-peer {
+  position: relative;
+  width: 14px;
+  height: 14px;
+}
+
 /* In a connection with someone else: dimmed, desaturated, not pulsing. */
-.pulse-dot[data-busy="true"] {
+.pulse-peer[data-busy="true"] .pulse-dot {
   opacity: 0.35;
   filter: grayscale(0.8);
   animation: none;
   cursor: not-allowed;
+}
+.pulse-peer[data-busy="true"] .pulse-flare {
+  opacity: 0.4;
+}
+
+/* A stranger's flare: a small glass bubble above their dot, edged in their
+   hue. Tapping it is the same as tapping the dot. */
+.pulse-flare {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  max-width: 190px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #f4f4f5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  background: rgb(24 24 27 / 0.6);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  backdrop-filter: blur(12px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.18),
+    inset 0 0 0 1px color-mix(in oklab, var(--dot) 55%, transparent),
+    0 4px 16px -4px rgb(0 0 0 / 0.6);
+  transform: translateX(-50%);
+  animation: flare-in 420ms var(--ease-glass) both;
+  transition: max-width 300ms var(--ease-glass);
+}
+.pulse-peer:hover .pulse-flare {
+  max-width: 280px;
+  z-index: 1;
+}
+
+@keyframes flare-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px) scale(0.9);
+  }
 }
 
 @keyframes dot-ring {
@@ -263,6 +315,9 @@ body {
   bottom: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 2px 8px;
   border-radius: 9999px;
   font-size: 11px;

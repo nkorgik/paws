@@ -8,6 +8,7 @@ export const SIGNAL_TTL_MS = 60_000;
 
 // Flares (public notes on a dot) disappear after this.
 export const FLARE_TTL_MS = 15 * 60_000;
+export const FLARE_MAX_LENGTH = 60;
 
 // Client poll interval. Kept here so client + server reason about the same cadence.
 export const POLL_INTERVAL_MS = 1_500;

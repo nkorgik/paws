@@ -64,3 +64,27 @@ export function leave(token: string): void {
     });
   }
 }
+
+export type StatusResult =
+  | { ok: true; flare: string | null; expiresAt?: string }
+  | { ok: false; error: string };
+
+// Set (moderated server-side) or clear (null) the flare on our dot.
+export async function setStatus(
+  token: string,
+  status: { flare: string | null },
+): Promise<StatusResult> {
+  try {
+    const res = await fetch("/api/status", {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(status),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) return { ok: true, flare: body.flare ?? null, expiresAt: body.expiresAt };
+    if (res.status === 429) return { ok: false, error: "Slow down a little and try again." };
+    return { ok: false, error: body.error ?? "Couldn't update that. Try again." };
+  } catch {
+    return { ok: false, error: "You're offline. Try again." };
+  }
+}
