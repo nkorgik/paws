@@ -69,7 +69,7 @@ export function distanceKm(
 // offset 1–3 km, so anything close is just "nearby".
 export function describeDistance(km: number): string {
   if (km < 5) return "nearby";
-  if (km < 100) return `about ${Math.round(km / 5) * 5} km away`;
-  if (km < 1000) return `about ${Math.round(km / 50) * 50} km away`;
-  return `about ${(Math.round(km / 500) * 500).toLocaleString("en-US")} km away`;
+  if (km < 100) return `~${Math.round(km / 5) * 5} km away`;
+  if (km < 1000) return `~${Math.round(km / 50) * 50} km away`;
+  return `~${(Math.round(km / 500) * 500).toLocaleString("en-US")} km away`;
 }
