@@ -17,9 +17,13 @@ model Presence {
   lat       Float // ALREADY privacy-offset coords (raw is never stored)
   lng       Float
   busy      Boolean  @default(false) // true while in an active connection
+  // Who this user has requested (busy=false) or is connected to (busy=true).
+  // Lets the server check every signal against a real request/connection.
+  peerId    String?
   lastSeen  DateTime
 
   @@index([lastSeen])
+  @@index([peerId])
 }
 
 model Signal {

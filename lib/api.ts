@@ -32,25 +32,27 @@ export async function poll(token: string): Promise<PollResponse> {
   return res.json();
 }
 
+// Resolves to false if the server rejected the signal (e.g. 409: it no
+// longer matches the connection state, like accepting an expired request).
 export async function sendSignal(
   token: string,
   toId: string,
   type: SignalType,
   payload?: string,
-): Promise<void> {
-  await fetch("/api/signal", {
+): Promise<boolean> {
+  const res = await fetch("/api/signal", {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify({ toId, type, payload }),
   });
+  return res.ok;
 }
 
-// Fire-and-forget leave that survives the tab closing. `peerId` is whoever
-// we're connected to (or requesting/being requested by), so the server can
-// end that connection for them too. sendBeacon can't set headers, so the
-// token goes in the body here.
-export function leave(token: string, peerId?: string): void {
-  const body = JSON.stringify({ token, peerId });
+// Fire-and-forget leave that survives the tab closing. The server ends our
+// request/connection for the other side too. sendBeacon can't set headers,
+// so the token goes in the body here.
+export function leave(token: string): void {
+  const body = JSON.stringify({ token });
   if (typeof navigator !== "undefined" && navigator.sendBeacon) {
     navigator.sendBeacon("/api/leave", body);
   } else {

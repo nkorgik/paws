@@ -163,8 +163,11 @@ export default function Home() {
     if (connRef.current.kind !== "incoming") return;
     const peerId = connRef.current.peerId;
     startPeer(peerId, false);
-    void sendSignal(session.token, peerId, "accept");
     setConn({ kind: "connecting", peerId });
+    void sendSignal(session.token, peerId, "accept").then((ok) => {
+      // The request was cancelled or expired before we accepted.
+      if (!ok) teardown("That request is no longer available.");
+    });
   }
 
   function declineIncoming() {
@@ -305,10 +308,7 @@ export default function Home() {
 
   useEffect(() => {
     if (phase !== "live") return;
-    const onLeave = () => {
-      const c = connRef.current;
-      leave(session.token, c.kind === "idle" ? undefined : c.peerId);
-    };
+    const onLeave = () => leave(session.token);
     window.addEventListener("pagehide", onLeave);
     window.addEventListener("beforeunload", onLeave);
     return () => {

@@ -34,6 +34,6 @@ export function bearerToken(request: Request): string | null {
 export function findSession(token: string) {
   return prisma.presence.findUnique({
     where: { tokenHash: hashToken(token) },
-    select: { id: true, busy: true },
+    select: { id: true, busy: true, peerId: true },
   });
 }

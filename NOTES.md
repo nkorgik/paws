@@ -108,6 +108,15 @@ I reviewed all four API routes (`join`, `poll`, `signal`, `leave`) plus the clie
 - Residual risk: if a user is reaped (15s without polling), someone who knows their id could claim it before they re-join. The window is small and the gain is little, so I accepted it.
 - Schema change: `npx prisma db push` needs an empty `Presence` table, because the new column is required. The rows are transient anyway.
 
+**#2: Server-side connection state.** `Presence.peerId` records who a user has requested (`busy=false`) or is connected to (`busy=true`). `/api/signal` now checks every signal against that state and rejects anything that doesn't fit with 409:
+- `request`: allowed only if you're not in a connection. The target must be online and free, otherwise it's auto-declined as before.
+- `accept` / `decline`: only for a pending request *from that user to you*, checked with a conditional update so a stale or forged one matches nothing. `decline` now frees only the requester; before, it also cleared the decliner's `busy` even if they were in another chat.
+- `end`: only between users who are actually linked (a request either way, or a connection).
+- `offer` / `answer` / `ice`: only between two users connected to each other, so nobody can inject handshake data into someone else's call.
+- `/api/leave` now works out whom to notify from `peerId` on the server, instead of trusting a `peerId` sent by the client (which previously let any user free anyone and send them "end").
+- Client: if an accept is rejected (the request was cancelled or expired first), the user sees "That request is no longer available" instead of hanging on "Connecting…".
+- Verified with a script: accept/offer/ice/end/decline to strangers → 409 and nothing is marked busy. Full request → accept → offer/answer → end → reconnect flow works. Leave frees and notifies only real peers. Also checked in two browser tabs that the real client's signals are all accepted.
+
 ## Phase 4 — Make it better
 
 _TODO_
