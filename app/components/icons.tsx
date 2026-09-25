@@ -132,3 +132,9 @@ export const IconEyeOff = (p: IconProps) => (
     <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18" />
   </Icon>
 );
+
+export const IconMoon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z" />
+  </Icon>
+);

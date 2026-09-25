@@ -94,13 +94,14 @@ export function leave(token: string): void {
 }
 
 export type StatusResult =
-  | { ok: true; flare: string | null; expiresAt?: string }
+  | { ok: true; flare: string | null; expiresAt?: string; dnd: boolean }
   | { ok: false; error: string };
 
-// Set (moderated server-side) or clear (null) the flare on our dot.
+// Set (moderated server-side) or clear (null) the flare on our dot, and/or
+// toggle do not disturb.
 export async function setStatus(
   token: string,
-  status: { flare: string | null },
+  status: { flare?: string | null; dnd?: boolean },
 ): Promise<StatusResult> {
   try {
     const res = await fetch("/api/status", {
@@ -109,7 +110,14 @@ export async function setStatus(
       body: JSON.stringify(status),
     });
     const body = await res.json().catch(() => ({}));
-    if (res.ok) return { ok: true, flare: body.flare ?? null, expiresAt: body.expiresAt };
+    if (res.ok) {
+      return {
+        ok: true,
+        flare: body.flare ?? null,
+        expiresAt: body.expiresAt,
+        dnd: body.dnd === true,
+      };
+    }
     if (res.status === 429) return { ok: false, error: "Slow down a little and try again." };
     return { ok: false, error: body.error ?? "Couldn't update that. Try again." };
   } catch {

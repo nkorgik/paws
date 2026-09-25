@@ -61,6 +61,20 @@ export default function Home() {
   );
   const myFlareRef = useRef(myFlare);
   const [flareOpen, setFlareOpen] = useState(false);
+  const [dnd, _setDnd] = useState(false);
+  const dndRef = useRef(false);
+  function toggleDnd() {
+    const next = !dndRef.current;
+    dndRef.current = next;
+    _setDnd(next);
+    void setStatus(session.token, { dnd: next }).then((res) => {
+      if (!res.ok) {
+        dndRef.current = !next;
+        _setDnd(!next);
+        showNotice(res.error);
+      }
+    });
+  }
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [gateError, setGateError] = useState<string | null>(null);
   useEffect(() => {
@@ -368,11 +382,12 @@ export default function Home() {
             setGateError(PAUSED_MESSAGE);
             setPhase("gate");
           }
-          // A re-join creates a fresh row; put our flare back on it.
+          // A re-join creates a fresh row; put our flare / DND back on it.
           const f = myFlareRef.current;
-          if (f && f.expiresAt > Date.now()) {
-            void setStatus(session.token, { flare: f.text });
-          }
+          const restore: { flare?: string; dnd?: boolean } = {};
+          if (f && f.expiresAt > Date.now()) restore.flare = f.text;
+          if (dndRef.current) restore.dnd = true;
+          if (Object.keys(restore).length) void setStatus(session.token, restore);
         }
         setPeers(data.peers);
         for (const s of data.signals) processSignalRef.current(s);
@@ -493,7 +508,9 @@ export default function Home() {
               : "Tap a dot to start a conversation"
           }
           flare={myFlare}
+          dnd={dnd}
           onOpenFlare={() => setFlareOpen(true)}
+          onToggleDnd={toggleDnd}
         />
       )}
 

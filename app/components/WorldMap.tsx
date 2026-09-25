@@ -197,8 +197,8 @@ export default function WorldMap({
           // Clicking the dot or its flare bubble both connect.
           el.addEventListener("click", (e) => {
             e.stopPropagation();
-            // Busy users would just auto-decline, so don't even ask.
-            if (el.dataset.busy === "true") return;
+            // Busy / do-not-disturb users would just auto-decline.
+            if (el.dataset.busy === "true" || el.dataset.dnd === "true") return;
             if (canConnectRef.current) onPeerClickRef.current(peer.id);
           });
           marker = new mapboxgl.Marker({ element: el })
@@ -208,8 +208,13 @@ export default function WorldMap({
         }
         const el = marker.getElement();
         el.dataset.busy = String(peer.busy);
+        el.dataset.dnd = String(peer.dnd);
         const label =
-          (peer.busy ? "Stranger (in a chat)" : "Connect with stranger") +
+          (peer.busy
+            ? "Stranger (in a chat)"
+            : peer.dnd
+              ? "Stranger (not taking chats right now)"
+              : "Connect with stranger") +
           (peer.flare ? `: “${peer.flare}”` : "");
         const dot = el.querySelector<HTMLButtonElement>(".pulse-dot");
         dot?.setAttribute("aria-label", label);

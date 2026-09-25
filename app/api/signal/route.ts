@@ -71,11 +71,17 @@ export async function POST(request: NextRequest) {
       if (me.busy) return conflict();
       const target = await prisma.presence.findUnique({
         where: { id: toId },
-        select: { busy: true },
+        select: { busy: true, dnd: true },
       });
-      if (!target || target.busy || (await isBlockedPair(fromId, toId))) {
-        // Offline, already connected, or one blocked the other — auto-decline
-        // instead of delivering (a block looks like any other decline).
+      if (
+        !target ||
+        target.busy ||
+        target.dnd ||
+        (await isBlockedPair(fromId, toId))
+      ) {
+        // Offline, busy, do-not-disturb, or one blocked the other —
+        // auto-decline instead of delivering (a block looks like any other
+        // decline).
         await deliver(toId, fromId, "decline", null);
         return Response.json({ ok: true, autoDeclined: true });
       }

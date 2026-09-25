@@ -243,6 +243,16 @@ body {
   opacity: 0.4;
 }
 
+/* Do not disturb: visible but quiet — hollow, no pulse, not clickable. */
+.pulse-peer[data-dnd="true"] .pulse-dot {
+  background: transparent;
+  border-color: color-mix(in oklab, var(--dot) 70%, white);
+  opacity: 0.55;
+  animation: none;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 /* A stranger's flare: a small glass bubble above their dot, edged in their
    hue. Tapping it is the same as tapping the dot. */
 .pulse-flare {

@@ -27,6 +27,8 @@ model Presence {
   // write and hidden once it expires. Gone with the row when the session ends.
   flare          String?
   flareExpiresAt DateTime?
+  // Do not disturb: stays on the map, but requests are auto-declined.
+  dnd            Boolean   @default(false)
   lastSeen       DateTime
 
   @@index([lastSeen])

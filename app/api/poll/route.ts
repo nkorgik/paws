@@ -68,6 +68,7 @@ export async function GET(request: NextRequest) {
       busy: true,
       flare: true,
       flareExpiresAt: true,
+      dnd: true,
     },
   });
 
@@ -100,6 +101,7 @@ export async function GET(request: NextRequest) {
         p.flare && p.flareExpiresAt && p.flareExpiresAt.getTime() > now
           ? p.flare
           : null,
+      dnd: p.dnd,
     })),
     signals: inbox.map((s) => ({
       id: s.id,

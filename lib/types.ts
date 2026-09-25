@@ -16,6 +16,7 @@ export interface PeerDot {
   lng: number;
   busy: boolean;
   flare: string | null; // public note on their dot, if any (moderated)
+  dnd: boolean; // do not disturb: requests are auto-declined
 }
 
 export interface SignalMsg {
