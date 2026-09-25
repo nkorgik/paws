@@ -1,29 +1,38 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { findSession, isValidId, isValidToken } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// POST /api/leave — body { id, peerId? }. Removes the presence row and any
-// pending signals to/from this user. If the user was in (or setting up) a
-// connection, `peerId` is the other side: free them and tell them it ended.
-// Called via navigator.sendBeacon on tab close, so the body may arrive as
-// text — parse defensively.
+// POST /api/leave — body { token, peerId? }. Removes the caller's presence row
+// and any pending signals to/from them. If the caller was in (or setting up)
+// a connection, `peerId` is the other side: free them and tell them it ended.
+// Called via navigator.sendBeacon on tab close, which can't set headers, so
+// the token travels in the body; the body may also arrive as text — parse
+// defensively.
 export async function POST(request: NextRequest) {
-  let id: unknown;
+  let token: unknown;
   let peerId: unknown;
   try {
     const text = await request.text();
     const body = text ? JSON.parse(text) : undefined;
-    id = body?.id;
+    token = body?.token;
     peerId = body?.peerId;
   } catch {
-    id = undefined;
+    token = undefined;
   }
 
-  if (typeof id !== "string" || !id) {
-    return Response.json({ error: "invalid id" }, { status: 400 });
+  if (!isValidToken(token)) {
+    return Response.json({ error: "invalid token" }, { status: 400 });
   }
+
+  const me = await findSession(token);
+  if (!me) {
+    // Already gone (left earlier or reaped) — nothing to do.
+    return Response.json({ ok: true });
+  }
+  const id = me.id;
 
   // Independent cleanup deletes — no atomicity needed (and interactive
   // transactions are unreliable over a PgBouncer pooler).
@@ -34,7 +43,7 @@ export async function POST(request: NextRequest) {
 
   // End the connection for the peer. Done after the deletes above so this
   // "end" isn't wiped along with the leaving user's other signals.
-  if (typeof peerId === "string" && peerId && peerId !== id) {
+  if (isValidId(peerId) && peerId !== id) {
     await prisma.presence.updateMany({
       where: { id: peerId },
       data: { busy: false },

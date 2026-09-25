@@ -100,7 +100,13 @@ I reviewed all four API routes (`join`, `poll`, `signal`, `leave`) plus the clie
 
 ### Fixes
 
-_In progress._
+**#1 + #7: Session tokens.** Each tab now creates a public `id` (its dot's address) plus a secret 256-bit `token` that stays in memory. The server stores only `sha256(token)` (`Presence.tokenHash`, unique) and works out the caller's identity from the token on every request. `fromId`/`id` sent by the client are no longer trusted.
+- `poll` and `signal` read the token from an `Authorization: Bearer` header, so nothing sensitive is in URLs or logs. `leave` takes it in the body, because `sendBeacon` can't set headers.
+- `join` creates the row with the token hash. An existing id can only be updated by the token that created it (otherwise 403), so a user can re-join with their own id after being reaped, but nobody else can take it over.
+- Verified with a script against the running API: poll/signal without a token → 401, spoofed `fromId` ignored, joining with someone else's id → 403, leaving with someone else's id doesn't remove them.
+- Hashing: tokens are random 256-bit values, so plain SHA-256 is enough. A slow hash like bcrypt would add latency to every poll for no gain.
+- Residual risk: if a user is reaped (15s without polling), someone who knows their id could claim it before they re-join. The window is small and the gain is little, so I accepted it.
+- Schema change: `npx prisma db push` needs an empty `Presence` table, because the new column is required. The rows are transient anyway.
 
 ## Phase 4 — Make it better
 
