@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
   IconChat,
+  IconEye,
+  IconEyeOff,
+  IconShield,
   IconMic,
   IconMicOff,
   IconPhoneEnd,
@@ -40,6 +43,9 @@ export default function VideoPanel({
   const remoteRef = useRef<HTMLVideoElement>(null);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
+  // Consent-first: their video starts blurred until you choose to see it,
+  // and you can blur it again any time. Purely local — nothing is sent.
+  const [revealed, setRevealed] = useState(false);
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -83,8 +89,33 @@ export default function VideoPanel({
         ref={remoteRef}
         autoPlay
         playsInline
-        className="h-full w-full object-cover"
+        className={`h-full w-full object-cover transition-[filter,transform] duration-700 ease-glass ${
+          revealed ? "" : "scale-110 blur-[48px] saturate-50"
+        }`}
       />
+      {remoteStream && !revealed && (
+        <div className="absolute inset-0 z-[1] flex items-center justify-center p-6">
+          <div className="glass glass-strong w-full max-w-xs animate-glass-in rounded-[28px] p-6 text-center">
+            <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-white/10 text-emerald-300">
+              <IconShield />
+            </span>
+            <h2 className="mt-4 text-lg font-semibold tracking-tight">
+              Their video is blurred
+            </h2>
+            <p className="mt-1 text-sm text-zinc-300">
+              You decide when to see it. If anything feels off, just end the
+              video.
+            </p>
+            <button
+              onClick={() => setRevealed(true)}
+              autoFocus
+              className="btn btn-primary mt-5 h-11 w-full text-sm"
+            >
+              <IconEye className="size-4" /> Reveal video
+            </button>
+          </div>
+        </div>
+      )}
       {!remoteStream && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
           <span
@@ -154,6 +185,16 @@ export default function VideoPanel({
             className={`btn size-12 ${camOn ? "btn-glass" : "bg-white text-zinc-900"}`}
           >
             {camOn ? <IconVideo /> : <IconVideoOff />}
+          </button>
+          <button
+            onClick={() => setRevealed(!revealed)}
+            disabled={!remoteStream}
+            aria-label={revealed ? "Blur their video" : "Reveal their video"}
+            aria-pressed={!revealed}
+            title={revealed ? "Blur their video" : "Reveal their video"}
+            className={`btn size-12 ${revealed ? "btn-glass" : "bg-white text-zinc-900"}`}
+          >
+            {revealed ? <IconEyeOff /> : <IconEye />}
           </button>
           <button
             onClick={onToggleChat}
